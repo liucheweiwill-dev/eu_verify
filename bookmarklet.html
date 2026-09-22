@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>安裝「收集結果網址」書籤</title>
+<style>
+  :root { color-scheme: light dark;
+    --bg:#f6f7f9; --card:#fff; --ink:#16181d; --muted:#6b7280; --line:#e3e6ea;
+    --accent:#1f5fd0; --accent-ink:#fff; --code:#f3f4f6; --warn:#8a6d1f; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#14161a; --card:#1c1f25; --ink:#e8eaed; --muted:#9aa2ad; --line:#2b2f37;
+    --accent:#6c9bf0; --accent-ink:#10131a; --code:#22262e; --warn:#e2c078; } }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px 20px 56px; background:var(--bg); color:var(--ink);
+    font:15px/1.7 "Segoe UI","Microsoft JhengHei",system-ui,sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; }
+  h1 { font-size:21px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13.5px; margin:0 0 24px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:18px; margin-bottom:16px; }
+  h2 { font-size:15px; margin:0 0 10px; }
+  .drag { display:inline-block; background:var(--accent); color:var(--accent-ink);
+    font-weight:700; font-size:15.5px; padding:11px 20px; border-radius:10px;
+    text-decoration:none; cursor:grab; }
+  .drag:active { cursor:grabbing; }
+  ol { padding-left:22px; margin:10px 0 0; }
+  li { margin-bottom:6px; }
+  code, kbd { background:var(--code); border-radius:5px; padding:1px 6px;
+    font:13px/1.5 ui-monospace,Consolas,monospace; }
+  pre { background:var(--code); border-radius:8px; padding:12px; overflow-x:auto;
+    font:12px/1.5 ui-monospace,Consolas,monospace; }
+  .note { color:var(--muted); font-size:13px; margin-top:10px; }
+  .warn { color:var(--warn); font-size:13px; margin-top:10px; }
+  b { font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>安裝「收集結果網址」書籤</h1>
+  <p class="sub">在 Google 結果頁按一下，把 eeas／consilium／nato 的結果網址收集起來，複製到剪貼簿。</p>
+
+  <div class="panel">
+    <h2>第一步：把這顆鈕拖到書籤列</h2>
+    <p><a class="drag" id="bm" href="#">收集結果網址</a></p>
+    <ol>
+      <li>Chrome 沒顯示書籤列的話，先按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></li>
+      <li>把上面那顆藍鈕<b>拖</b>到書籤列上（不要用點的）</li>
+    </ol>
+    <p class="note">拖不動的話：對藍鈕按右鍵 → 複製連結網址，然後手動新增一個書籤、把網址貼進去。</p>
+  </div>
+
+  <div class="panel">
+    <h2>第二步：每天這樣用</h2>
+    <ol>
+      <li>在 eu_monitor 按「開啟三個分頁」</li>
+      <li>在<b>每一個</b> Google 分頁上各按一次這個書籤</li>
+      <li>它會跨分頁累積（三頁同屬 google.com，共用暫存），面板上會顯示累積筆數</li>
+      <li>按面板上的<b>複製</b>，再回到 <code>eu_verify</code> 雙擊 <code>run.cmd</code></li>
+    </ol>
+    <p class="note">面板上的「清空」用來開始新的一輪。不清空的話會一直累加上去。</p>
+  </div>
+
+  <div class="panel">
+    <h2>如果書籤沒反應</h2>
+    <p>Google 的 CSP 有可能擋掉書籤小工具（Chrome 通常允許，但不保證）。
+       按了完全沒動靜就走這條退路，結果一樣：</p>
+    <ol>
+      <li>在每個 Google 結果分頁按 <kbd>Ctrl</kbd>+<kbd>S</kbd> 存檔</li>
+      <li>把存下來的三個 <code>.html</code> 一起<b>拖到</b> <code>run.cmd</code> 上放開</li>
+    </ol>
+    <p class="warn"><b>注意：</b>書籤如果抓到 0 筆，它會明講「抓到 0 筆」而不是靜靜地沒反應。
+       看到那句話代表 Google 可能改版了，<b>不要當成「今天沒東西」</b>。</p>
+  </div>
+
+  <div class="panel">
+    <h2>它到底做了什麼</h2>
+    <p class="note">全部程式碼都在下面，沒有任何外部請求，只讀目前這頁的連結、存在 localStorage：</p>
+    <pre id="src"></pre>
+  </div>
+
+</div>
+
+<script>
+// ---- 書籤小工具本體 -------------------------------------------------
+// 這個函式會被轉成 javascript: 網址掛到上面那顆鈕上。
+function collector() {
+  var TARGETS = ['eeas.europa.eu', 'consilium.europa.eu', 'nato.int'];
+  var KEY = 'eu-verify-collect';
+
+  function isTarget(h) {
+    for (var i = 0; i < TARGETS.length; i++) {
+      if (h === TARGETS[i] || h.slice(-(TARGETS[i].length + 1)) === '.' + TARGETS[i]) return true;
+    }
+    return false;
+  }
+
+  // 撈出這頁所有指向目標站的連結
+  var found = [];
+  var links = document.querySelectorAll('a[href]');
+  for (var i = 0; i < links.length; i++) {
+    var h = links[i].href;
+    try {
+      var u = new URL(h);
+      if (/(^|\.)google\./.test(u.hostname) && u.pathname === '/url') {
+        var inner = u.searchParams.get('q') || u.searchParams.get('url');
+        if (inner) u = new URL(inner);
+      }
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
+      if (!isTarget(u.hostname)) continue;
+      u.hash = '';
+      found.push(u.toString());
+    } catch (e) { /* 略過不合法的 */ }
+  }
+
+  // 跟既有的合併去重（三個分頁同屬 google.com，localStorage 共用）
+  var prev = [];
+  try { prev = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { prev = []; }
+  var seen = {}, all = [];
+  prev.concat(found).forEach(function (u) { if (!seen[u]) { seen[u] = 1; all.push(u); } });
+  try { localStorage.setItem(KEY, JSON.stringify(all)); } catch (e) { /* 無痕視窗等 */ }
+
+  // ---- 面板 ----
+  var old = document.getElementById('eu-verify-panel');
+  if (old) old.parentNode.removeChild(old);
+
+  var box = document.createElement('div');
+  box.id = 'eu-verify-panel';
+  box.setAttribute('style',
+    'position:fixed;top:12px;right:12px;z-index:2147483647;width:390px;max-width:92vw;' +
+    'background:#fff;color:#16181d;border:1px solid #c8ccd2;border-radius:10px;' +
+    'box-shadow:0 8px 28px rgba(0,0,0,.22);padding:12px;' +
+    'font:13px/1.55 "Segoe UI","Microsoft JhengHei",system-ui,sans-serif;');
+
+  var head = document.createElement('div');
+  head.setAttribute('style', 'font-weight:700;margin-bottom:6px;');
+  head.textContent = found.length === 0
+    ? '⚠ 這頁抓到 0 筆'
+    : '這頁新增 ' + found.length + ' 筆';
+  box.appendChild(head);
+
+  var line = document.createElement('div');
+  line.setAttribute('style', 'margin-bottom:8px;');
+  line.textContent = '目前累積 ' + all.length + ' 筆（已去重）';
+  box.appendChild(line);
+
+  if (found.length === 0) {
+    var warn = document.createElement('div');
+    warn.setAttribute('style', 'color:#8a4b00;margin-bottom:8px;');
+    warn.textContent = '這頁沒有目標站的結果，或者 Google 改版了。' +
+                       '請自己看一眼再決定，不要當成「今天沒東西」。';
+    box.appendChild(warn);
+  }
+
+  var ta = document.createElement('textarea');
+  ta.value = all.join('\n');
+  ta.setAttribute('style',
+    'width:100%;height:120px;font:11px/1.45 ui-monospace,Consolas,monospace;' +
+    'border:1px solid #d5d9df;border-radius:6px;padding:6px;resize:vertical;' +
+    'background:#f7f8fa;color:#16181d;');
+  box.appendChild(ta);
+
+  var bar = document.createElement('div');
+  bar.setAttribute('style', 'margin-top:8px;display:flex;gap:6px;');
+
+  function mkBtn(label, bg, fg) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.setAttribute('style',
+      'flex:0 0 auto;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;' +
+      'font:inherit;font-weight:600;background:' + bg + ';color:' + fg + ';');
+    return b;
+  }
+
+  var copy = mkBtn('複製', '#1f5fd0', '#fff');
+  copy.addEventListener('click', function () {
+    ta.select();
+    var done = false;
+    try { done = document.execCommand('copy'); } catch (e) { done = false; }
+    if (!done && navigator.clipboard) {
+      navigator.clipboard.writeText(ta.value).then(function () {
+        copy.textContent = '已複製 ✓';
+      }, function () {
+        copy.textContent = '複製失敗，請手動選取';
+      });
+      return;
+    }
+    copy.textContent = done ? '已複製 ✓' : '複製失敗，請手動選取';
+  });
+  bar.appendChild(copy);
+
+  var clear = mkBtn('清空', '#eceef1', '#16181d');
+  clear.addEventListener('click', function () {
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    ta.value = '';
+    line.textContent = '已清空，下次按會重新開始累積';
+  });
+  bar.appendChild(clear);
+
+  var close = mkBtn('關閉', '#eceef1', '#16181d');
+  close.addEventListener('click', function () {
+    box.parentNode && box.parentNode.removeChild(box);
+  });
+  bar.appendChild(close);
+
+  box.appendChild(bar);
+  document.body.appendChild(box);
+  ta.focus();
+  ta.select();
+}
+
+// ---- 把它掛到鈕上，並把原始碼顯示出來 -------------------------------
+(function () {
+  var src = collector.toString();
+  document.getElementById('bm').href =
+    'javascript:' + encodeURIComponent('(' + src + ')();void 0;');
+  document.getElementById('src').textContent = src;
+})();
+</script>
+</body>
+</html>

@@ -1,3 +1,7 @@
 # 產出物，不進版控
 search_result.html
 *.out.html
+
+# 每次執行產生的當日清單與暫存檔
+urls.today.txt
+.euv_*

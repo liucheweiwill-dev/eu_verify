@@ -26,17 +26,55 @@ eu_monitor 是單檔、零依賴、零建置的啟動器，它的價值就在於
 
 依 eu_monitor 的核心原則（漏掉比抓錯嚴重得多），這點要一直記得。
 
-## 用法
+## 安裝（只做一次）
 
-```bash
-node verify.js                      # 讀 urls.txt，寫出 search_result.html
-node verify.js my.txt -o out.html   # 自訂輸入輸出
+1. 裝 Node 18 以上。**零依賴，不用 `npm install`。**
+2. 用瀏覽器開 `bookmarklet.html`，把上面那顆藍鈕**拖**到書籤列。
+
+## 日常操作
+
+```
+① 在 eu_monitor 按「開啟三個分頁」
+② 在三個 Google 分頁上各按一次書籤 → 面板顯示累積筆數 → 按「複製」
+③ 回到這個資料夾，雙擊 run.cmd → 自動比對並開啟報告
 ```
 
-需要 Node 18+（用內建 `fetch`）。**零依賴，不用 npm install。**
+沒有要打的指令。第 ③ 步會讀剪貼簿、寫出 `urls.today.txt`、跑比對、開啟
+`search_result.html`。
+
+面板上的「清空」用來開始新的一輪；不清空會一直往上累加。
+
+### 書籤沒反應的話
+
+Google 的 CSP 有可能擋掉書籤小工具（Chrome 通常允許，但不保證）。退路：
+
+1. 在每個 Google 結果分頁按 `Ctrl+S` 存檔
+2. 把存下來的三個 `.html` 一起**拖到 `run.cmd` 上放開**
+
+結果完全一樣。
+
+### 手動跑
+
+```bash
+node verify.js                      # 讀 urls.txt（內含測試案例）
+node verify.js my.txt -o out.html   # 自訂輸入輸出
+node extract.js --text clip.txt     # 只做網址抽取，印到 stdout
+```
 
 輸入是純文字檔，一行一個網址，`#` 開頭的行會被忽略。
-目前網址要自己從 Google 結果頁複製出來——見下面「還沒做的」。
+
+## 抓到 0 筆時會停下來，不會裝作沒事
+
+`extract.js` 抓到 0 筆會以 exit code 1 結束，`run.cmd` 收到就停住、
+**不覆蓋既有的清單、不執行比對、不開報告**，並印出：
+
+```
+[STOP] No target URLs found. Nothing was run.
+This does NOT mean "no news today" - it means no URLs were read.
+```
+
+這是刻意的。Google 改版會弄壞網址抽取，而「安靜地少回幾筆」正是
+Google Alerts 被否決的原因（見 eu_monitor 的 `docs/AGENT_BRIEF.md` §3）。
 
 ## 為什麼不能直接 grep 網頁
 
@@ -88,19 +126,22 @@ node verify.js my.txt -o out.html   # 自訂輸入輸出
 `verify.js` 的 `SITES` 是從 `eu_monitor/index.html` 的 `SITES` 抄來的。
 那邊改了這邊要跟著改，不然比對的是舊關鍵字。
 
-## 還沒做的
+## 還沒做的：讓程式自己去 Google 查
 
-**第①步：自動取得 Google 的結果清單。**
+書籤已經把「複製網址」那步解掉了，剩下的缺口是**發出查詢**——
+目前還是你在 eu_monitor 按鈕、由真人的瀏覽器去查。
 
-目前要自己把網址從結果頁複製進 `urls.txt`。
-
-自動化的話就得爬 Google SERP，而那會撞 bot 偵測——2026-09-22 實測，
+要讓程式自己查就得爬 Google SERP，而那會撞 bot 偵測：2026-09-22 實測，
 幾分鐘內約 15 條 `site:` 查詢就被出驗證頁。每天 3 條量很低，但不構成保證，
 **且不得繞過挑戰**。
 
-真要做的話，硬性要求是：**被擋時必須大聲失敗**，把整份報告標記為不完整，
-絕不可以安靜地少回幾筆。否則就違反了「使用者無法分辨『今天真的只有三則』
-和『你只給我看了三則』」這條。
+所以目前這樣分工是刻意的——**查詢由真人發，比對交給程式**。
+真人的瀏覽器有登入狀態與正常的使用節奏，不會觸發偵測；
+程式只做它擅長又無風險的那半：抓頁面、數關鍵字、跟基準線比。
+
+真要自動化查詢的話，硬性要求是：**被擋時必須大聲失敗**，
+把整份報告標記為不完整，絕不可以安靜地少回幾筆。
+
 
 ## 相關
 
