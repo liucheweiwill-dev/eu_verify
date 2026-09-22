@@ -1,0 +1,17 @@
+# 一行一個網址，# 開頭的行會被忽略。
+# 下面這幾筆是測試案例，正確答案已知（見 README.md）。
+
+# 預期「只在導覽列」——正文完全沒提印太，是使用者 2026-09-22 回報的那頁
+https://www.eeas.europa.eu/eeas/opening-remarks-un-side-event-humanitarian-diplomacy-safeguards-international-humanitarian-law_en
+
+# 預期「正文確認」——EEAS 的印太主題頁
+https://www.eeas.europa.eu/eu-indo-pacific-strategy-topic_en
+
+# 預期「正文確認」——NATO 印太夥伴關係頁
+https://www.nato.int/en/what-we-do/partnerships-and-cooperation/relations-with-partners-in-the-indo-pacific-region
+
+# 預期「只在導覽列」——北約創始條約，跟中國印太無關
+https://www.nato.int/en/about-us/organization/founding-treaty
+
+# 預期「無法檢查」——consilium 對所有自動化客戶端回 403
+https://www.consilium.europa.eu/en/press/press-releases/
