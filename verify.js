@@ -18,33 +18,28 @@ const path = require('path');
 
 // ---------------------------------------------------------------- 設定
 
-// 每個網域的關鍵字，分號分隔。
-// **要跟 eu_monitor/index.html 的 SITES.kw 保持一致**——那邊改了這邊要跟著改。
-// 這些字為什麼長這樣（哪些被導覽列污染過），見 eu_monitor/docs/AGENT_BRIEF.md §10。
-const SITES = [
-  {
-    domain: 'eeas.europa.eu',
-    kw: 'Taiwan Strait;cross-Strait;Chinese;PRC;Beijing;South China Sea;' +
-        'the Indo-Pacific;Indo-Pacific region;NATO;drone;cables',
-  },
-  {
-    domain: 'consilium.europa.eu',
-    kw: 'Taiwan;China;Chinese;PRC;NATO;drone;cables;Indo-Pacific',
-    // 這一站對所有自動化客戶端回 403（連會執行 JS 的瀏覽器也過不去）。
-    // 不是 bug，是對方擋的。結果一律標成「無法檢查」。
-    knownBlocked: '該站對所有自動化客戶端回 403（JS 指紋挑戰）',
-  },
-  {
-    domain: 'nato.int',
-    kw: 'Chinese;PRC;Beijing;Indo-Pacific partners;South China Sea;drone;cables',
-  },
-];
+// 站台設定（關鍵字、已知封鎖站）與 index.html（瀏覽器版）共用同一份
+// sites.json，不要在這裡重複定義。
+// **sites.json 的 kw 要跟 eu_monitor/index.html 的 SITES.kw 保持一致**——
+// 那邊改了這邊要跟著改。這些字為什麼長這樣（哪些被導覽列污染過），
+// 見 eu_monitor/docs/AGENT_BRIEF.md §10。
+const SITES_CONFIG = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'sites.json'), 'utf8')
+);
+const SITES = SITES_CONFIG.sites;
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
            '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const TIMEOUT_MS = 25000;
 const POLITE_DELAY_MS = 1000;   // 抓取之間停一下，不要打人家的站
-const BASELINE_PROBE = '/zz-eu-verify-no-such-page-' + Date.now();
+
+// 基準線探測路徑**必須固定**，不要用時間戳記或其他每次都不同的值。
+// 2026-09-23 實測發現：同一個網域對不同的假路徑，404 頁內容會有微幅出入
+// （例如某次 baseline 探測 A 路徑得到 1 次「Indo-Pacific」，探測 B 路徑得到
+// 2 次），推測是 404 樣板裡帶了跟路徑相關的建議連結一類的東西。用固定路徑
+// 探測同一個網址四次，結果每次完全一致——問題不是「404 頁不穩定」，
+// 是「每次探測的網址不一樣」。
+const BASELINE_PROBE = SITES_CONFIG.baselineProbePath;
 
 // ---------------------------------------------------------------- 小工具
 
