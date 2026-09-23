@@ -74,6 +74,7 @@ function main() {
 
   const files = argv.filter((a) => a !== '--text');
   const all = [];
+  const logLines = [];
   let read = 0;
 
   for (const f of files) {
@@ -81,7 +82,14 @@ function main() {
       console.error('找不到檔案：' + f);
       continue;
     }
-    all.push(...harvest(fs.readFileSync(f, 'utf8')));
+    const text = fs.readFileSync(f, 'utf8');
+    all.push(...harvest(text));
+    // 書籤 v2 附的收集紀錄行（#euv ...）原樣傳下去，給 verify.js 判斷
+    // 每一站有沒有收完所有頁。這些行不含 http(s)://，不會被當成網址。
+    text.split(/\r?\n/).forEach((l) => {
+      const t = l.trim();
+      if (/^#euv\s/.test(t) && logLines.indexOf(t) < 0) logLines.push(t);
+    });
     read++;
   }
 
@@ -99,8 +107,10 @@ function main() {
     process.exit(1);
   }
 
+  logLines.forEach((l) => console.log(l));
   unique.forEach((u) => console.log(u));
-  console.error('抓到 ' + unique.length + ' 筆。');
+  console.error('抓到 ' + unique.length + ' 筆' +
+    (logLines.length ? '，附收集紀錄 ' + logLines.length + ' 站。' : '（沒有收集紀錄——舊版書籤或手動貼上）。'));
 }
 
 main();

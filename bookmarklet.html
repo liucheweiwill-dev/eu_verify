@@ -25,7 +25,7 @@
     font-weight:700; font-size:15.5px; padding:11px 20px; border-radius:10px;
     text-decoration:none; cursor:grab; }
   .drag:active { cursor:grabbing; }
-  ol { padding-left:22px; margin:10px 0 0; }
+  ol, ul { padding-left:22px; margin:10px 0 0; }
   li { margin-bottom:6px; }
   code, kbd { background:var(--code); border-radius:5px; padding:1px 6px;
     font:13px/1.5 ui-monospace,Consolas,monospace; }
@@ -33,6 +33,7 @@
     font:12px/1.5 ui-monospace,Consolas,monospace; }
   .note { color:var(--muted); font-size:13px; margin-top:10px; }
   .warn { color:var(--warn); font-size:13px; margin-top:10px; }
+  .new { border-color:var(--accent); }
   b { font-weight:600; }
 </style>
 </head>
@@ -40,11 +41,21 @@
 <div class="wrap">
 
   <h1>安裝「收集結果網址」書籤</h1>
-  <p class="sub">在 Google 結果頁按一下，把 eeas／consilium／nato 的結果網址收集起來，複製到剪貼簿。</p>
+  <p class="sub">在 Google 結果頁按一下，把 eeas／consilium／nato 的結果網址——<b>包括後面幾頁</b>——收集起來，複製到剪貼簿。</p>
+
+  <div class="panel new">
+    <h2>v2 更新了什麼：以前只收第 1 頁，現在會把後面幾頁也收完</h2>
+    <p>舊版只讀<b>目前畫面上那一頁</b>的連結。Google 一頁只給 10 筆，EEAS 過去一週通常有 2 頁——
+       也就是說舊版每次都漏掉第 2 頁，而且不會告訴你。</p>
+    <p>v2 在你按下去之後，會自己去抓同一個查詢的下一頁、再下一頁，直到沒有下一頁為止，
+       然後在面板上寫清楚<b>每一站收了幾頁、有沒有收完</b>。</p>
+    <p class="warn"><b>舊的書籤要換掉。</b>書籤的程式碼是存在書籤本身裡的，這頁更新不會改到你已經裝好的那顆。
+       把書籤列上舊的那顆刪掉，再從下面重新拖一次。面板標題寫「收集器 v2」就是新版。</p>
+  </div>
 
   <div class="panel">
     <h2>第一步：把這顆鈕拖到書籤列</h2>
-    <p><a class="drag" id="bm" href="#">收集結果網址</a></p>
+    <p><a class="drag" id="bm" href="#">收集結果網址 v2</a></p>
     <ol>
       <li>Chrome 沒顯示書籤列的話，先按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></li>
       <li>把上面那顆藍鈕<b>拖</b>到書籤列上（不要用點的）</li>
@@ -55,29 +66,49 @@
   <div class="panel">
     <h2>第二步：每天這樣用</h2>
     <ol>
-      <li>在 eu_monitor 按「開啟三個分頁」</li>
-      <li>在<b>每一個</b> Google 分頁上各按一次這個書籤</li>
-      <li>它會跨分頁累積（三頁同屬 google.com，共用暫存），面板上會顯示累積筆數</li>
-      <li>按面板上的<b>複製</b>，再回到 <code>eu_verify</code> 雙擊 <code>run.cmd</code></li>
+      <li>在 <a href="./">eu_verify</a> 按「開啟三個分頁」</li>
+      <li>在<b>每一個</b> Google 分頁上各按一次這個書籤（停在第 1 頁按就好，後面的頁它自己抓）</li>
+      <li>面板會顯示「收集中…」，等它變成 ✓ 再切到下一個分頁</li>
+      <li>三站都收完，回到 eu_verify 按「貼上並比對」</li>
     </ol>
     <p class="note">面板上的「清空」用來開始新的一輪。不清空的話會一直累加上去。</p>
   </div>
 
   <div class="panel">
-    <h2>如果書籤沒反應</h2>
-    <p>Google 的 CSP 有可能擋掉書籤小工具（Chrome 通常允許，但不保證）。
-       按了完全沒動靜就走這條退路，結果一樣：</p>
+    <h2>面板上會看到的狀態</h2>
+    <ul>
+      <li><b>✓ 已收完</b>——收到最後一頁了</li>
+      <li><b>⚠ Google 要求人機驗證</b>——自動翻頁被 Google 擋下。<b>書籤不會、也不應該繞過它</b>。
+          手動按 Google 的「下一頁」，在那一頁再按一次書籤，一樣會累加進去</li>
+      <li><b>⚠ 加密連結</b>——Google 給這個瀏覽器的結果連結是 <code>/goto?url=…</code>
+          這種不含真實網址的格式，抓不到。這是 Google 那邊的版本差異，不是書籤壞了</li>
+      <li><b>⚠ 這頁沒抓到任何結果連結</b>——Google 可能改版了。<b>不要當成「今天沒東西」</b></li>
+      <li><b>⚠ 已達自動翻頁上限</b>——一次最多自動翻 5 頁，後面還有的話請手動</li>
+    </ul>
+    <p class="note">Google 真的查無結果時，面板會寫「這站本次查詢 0 筆（Google 顯示查無結果）」——
+       跟「沒抓到」是兩回事，面板會分開講。</p>
+  </div>
+
+  <div class="panel">
+    <h2>如果書籤完全沒反應</h2>
+    <p>Google 的 CSP 有可能擋掉書籤小工具（Chrome 通常允許，但不保證）。按了完全沒動靜就走這條退路：</p>
     <ol>
-      <li>在每個 Google 結果分頁按 <kbd>Ctrl</kbd>+<kbd>S</kbd> 存檔</li>
-      <li>把存下來的三個 <code>.html</code> 一起<b>拖到</b> <code>run.cmd</code> 上放開</li>
+      <li>在每個 Google 結果分頁（包括第 2 頁）按 <kbd>Ctrl</kbd>+<kbd>S</kbd> 存檔</li>
+      <li>把存下來的 <code>.html</code> 一起<b>拖到</b> <code>run.cmd</code> 上放開</li>
     </ol>
-    <p class="warn"><b>注意：</b>書籤如果抓到 0 筆，它會明講「抓到 0 筆」而不是靜靜地沒反應。
-       看到那句話代表 Google 可能改版了，<b>不要當成「今天沒東西」</b>。</p>
   </div>
 
   <div class="panel">
     <h2>它到底做了什麼</h2>
-    <p class="note">全部程式碼都在下面，沒有任何外部請求，只讀目前這頁的連結、存在 localStorage：</p>
+    <p class="note">全部程式碼都在下面。它會做兩件事：</p>
+    <ol class="note">
+      <li>讀目前這頁的連結</li>
+      <li><b>向 google.com 抓同一個查詢的後面幾頁</b>（跟你手動按「下一頁」是同一個網址，只是由程式去抓），
+          每頁之間停 1.5 秒，最多 5 頁</li>
+    </ol>
+    <p class="note">除了 google.com，不會連到任何其他地方。收集結果存在這台電腦的 localStorage 裡，不會上傳。</p>
+    <p class="warn">第 2 點是程式代你向 Google 發查詢。量很小、是你按了才發生，但它確實屬於自動查詢——
+       遇到 Google 的人機驗證會立刻停下並告訴你，<b>不會嘗試繞過</b>。</p>
     <pre id="src"></pre>
   </div>
 
@@ -86,151 +117,303 @@
 <script>
 // ---- 書籤小工具本體 -------------------------------------------------
 // 這個函式會被轉成 javascript: 網址掛到上面那顆鈕上。
+// 注意：它是在 google.com 上執行的，不是在這一頁。
 function collector() {
+  var VERSION = 'v2';
   var TARGETS = ['eeas.europa.eu', 'consilium.europa.eu', 'nato.int'];
-  var KEY = 'eu-verify-collect';
+  var KEY = 'eu-verify-collect';     // 累積的網址（跟 v1 同一個 key，舊資料照用）
+  var LOGKEY = 'eu-verify-log';      // 每站收了哪幾頁
+  var MAX_EXTRA_PAGES = 5;
+  var DELAY_MS = 1500;
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   function isTarget(h) {
     for (var i = 0; i < TARGETS.length; i++) {
-      if (h === TARGETS[i] || h.slice(-(TARGETS[i].length + 1)) === '.' + TARGETS[i]) return true;
+      var d = TARGETS[i];
+      if (h === d || h.slice(-(d.length + 1)) === '.' + d) return true;
     }
     return false;
   }
 
-  // 撈出這頁所有指向目標站的連結
-  var found = [];
-  var links = document.querySelectorAll('a[href]');
-  for (var i = 0; i < links.length; i++) {
-    var h = links[i].href;
-    try {
-      var u = new URL(h);
-      if (/(^|\.)google\./.test(u.hostname) && u.pathname === '/url') {
-        var inner = u.searchParams.get('q') || u.searchParams.get('url');
-        if (inner) u = new URL(inner);
-      }
-      if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
-      if (!isTarget(u.hostname)) continue;
-      u.hash = '';
-      found.push(u.toString());
-    } catch (e) { /* 略過不合法的 */ }
+  function domainOfHost(h) {
+    for (var i = 0; i < TARGETS.length; i++) {
+      var d = TARGETS[i];
+      if (h === d || h.slice(-(d.length + 1)) === '.' + d) return d;
+    }
+    return null;
   }
 
-  // 跟既有的合併去重（三個分頁同屬 google.com，localStorage 共用）
-  var prev = [];
-  try { prev = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { prev = []; }
-  var seen = {}, all = [];
-  prev.concat(found).forEach(function (u) { if (!seen[u]) { seen[u] = 1; all.push(u); } });
-  try { localStorage.setItem(KEY, JSON.stringify(all)); } catch (e) { /* 無痕視窗等 */ }
+  function textOf(root) {
+    var b = root.body || root;
+    return (b && (b.innerText || b.textContent)) || '';
+  }
 
-  // ---- 面板 ----
+  // 從一份文件（目前頁面，或抓回來的下一頁）挑出目標站網址
+  function extract(root) {
+    var urls = [], opaque = 0, seen = {};
+    var links = root.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length; i++) {
+      var raw = links[i].getAttribute('href');
+      try {
+        var u = new URL(raw, 'https://www.google.com');
+        var g = /(^|\.)google\./.test(u.hostname);
+        if (g && u.pathname === '/goto') { opaque++; continue; }
+        if (g && u.pathname === '/url') {
+          var inner = u.searchParams.get('q') || u.searchParams.get('url');
+          if (!inner || !/^https?:/i.test(inner)) { opaque++; continue; }
+          u = new URL(inner);
+        }
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
+        if (!isTarget(u.hostname)) continue;
+        u.hash = '';
+        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
+          .forEach(function (p) { u.searchParams.delete(p); });
+        var s = u.toString();
+        if (!seen[s]) { seen[s] = 1; urls.push(s); }
+      } catch (e) { /* 略過不合法的 */ }
+    }
+    var t = textOf(root);
+    return {
+      urls: urls,
+      opaque: opaque,
+      noResults: /找不到符合|did not match any documents/i.test(t),
+      blocked: /我們的系統偵測到|unusual traffic from your computer/i.test(t) ||
+               !!root.querySelector('form[action*="/sorry/"]'),
+    };
+  }
+
+  function hasNext(root) {
+    return !!(root.querySelector('#pnnext') ||
+              root.querySelector('a[aria-label="下一頁"], a[aria-label="Next page"], a[aria-label="Next"]'));
+  }
+
+  function loadJSON(k, dflt) {
+    try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? dflt : v; }
+    catch (e) { return dflt; }
+  }
+  function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+  function pagesLabel(ps) {
+    if (!ps || !ps.length) return '';
+    ps = ps.slice().sort(function (a, b) { return a - b; });
+    var contiguous = ps.every(function (p, i) { return i === 0 || p === ps[i - 1] + 1; });
+    if (contiguous) return ps.length === 1 ? '第 ' + ps[0] + ' 頁' : '第 ' + ps[0] + '–' + ps[ps.length - 1] + ' 頁';
+    return '第 ' + ps.join('、') + ' 頁';
+  }
+
+  function missingPages(ps) {
+    if (!ps || !ps.length) return [];
+    var max = Math.max.apply(null, ps), out = [];
+    for (var p = 1; p <= max; p++) if (ps.indexOf(p) < 0) out.push(p);
+    return out;
+  }
+
+  // ---- 面板（全部用 textContent，不用 innerHTML）----
   var old = document.getElementById('eu-verify-panel');
   if (old) old.parentNode.removeChild(old);
-
   var box = document.createElement('div');
   box.id = 'eu-verify-panel';
   box.setAttribute('style',
-    'position:fixed;top:12px;right:12px;z-index:2147483647;width:390px;max-width:92vw;' +
+    'position:fixed;top:12px;right:12px;z-index:2147483647;width:420px;max-width:94vw;' +
     'background:#fff;color:#16181d;border:1px solid #c8ccd2;border-radius:10px;' +
     'box-shadow:0 8px 28px rgba(0,0,0,.22);padding:12px;' +
     'font:13px/1.55 "Segoe UI","Microsoft JhengHei",system-ui,sans-serif;');
-
-  var head = document.createElement('div');
-  head.setAttribute('style', 'font-weight:700;margin-bottom:6px;');
-  head.textContent = found.length === 0
-    ? '⚠ 這頁抓到 0 筆'
-    : '這頁新增 ' + found.length + ' 筆';
-  box.appendChild(head);
-
-  var line = document.createElement('div');
-  line.setAttribute('style', 'margin-bottom:8px;');
-  line.textContent = '目前累積 ' + all.length + ' 筆（已去重）';
-  box.appendChild(line);
-
-  var copyStatus = document.createElement('div');
-  copyStatus.setAttribute('style', 'margin-bottom:8px;color:#1a7f43;');
-  copyStatus.textContent = '複製中…';
-  box.appendChild(copyStatus);
-
-  if (found.length === 0) {
-    var warn = document.createElement('div');
-    warn.setAttribute('style', 'color:#8a4b00;margin-bottom:8px;');
-    warn.textContent = '這頁沒有目標站的結果，或者 Google 改版了。' +
-                       '請自己看一眼再決定，不要當成「今天沒東西」。';
-    box.appendChild(warn);
+  function line(txt, color, bold) {
+    var d = document.createElement('div');
+    d.setAttribute('style', 'margin-bottom:5px;' + (color ? 'color:' + color + ';' : '') + (bold ? 'font-weight:700;' : ''));
+    d.textContent = txt;
+    box.appendChild(d);
+    return d;
   }
-
+  line('eu-verify 收集器 ' + VERSION, '#6b7280');
+  var head = line('收集中…', null, true);
+  var detail = line('', '#16181d');
+  var summaryBox = document.createElement('div');
+  summaryBox.setAttribute('style', 'margin:8px 0;padding:8px;background:#f7f8fa;border-radius:6px;');
+  box.appendChild(summaryBox);
+  var copyStatus = line('', '#1a7f43');
   var ta = document.createElement('textarea');
-  ta.value = all.join('\n');
   ta.setAttribute('style',
-    'width:100%;height:120px;font:11px/1.45 ui-monospace,Consolas,monospace;' +
+    'width:100%;height:90px;font:11px/1.45 ui-monospace,Consolas,monospace;' +
     'border:1px solid #d5d9df;border-radius:6px;padding:6px;resize:vertical;' +
     'background:#f7f8fa;color:#16181d;');
   box.appendChild(ta);
-
-  // 按書籤這個動作本身就是使用者手勢，所以這裡可以直接嘗試自動複製，
-  // 不用等使用者再按一次「複製」。失敗的話（權限被擋、無痕視窗等）
-  // 下面的按鈕還在，可以手動按。
-  function tryAutoCopy() {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(ta.value).then(function () {
-        copyStatus.textContent = '✓ 已自動複製到剪貼簿，可以直接回去跑 run.cmd';
-      }, function () {
-        fallbackCopy();
-      });
-    } else {
-      fallbackCopy();
-    }
-  }
-  function fallbackCopy() {
-    ta.focus();
-    ta.select();
-    var done = false;
-    try { done = document.execCommand('copy'); } catch (e) { done = false; }
-    copyStatus.setAttribute('style', 'margin-bottom:8px;color:' + (done ? '#1a7f43' : '#8a4b00') + ';');
-    copyStatus.textContent = done
-      ? '✓ 已自動複製到剪貼簿，可以直接回去跑 run.cmd'
-      : '⚠ 自動複製失敗，請按下面的「複製」';
-  }
-  tryAutoCopy();
-
   var bar = document.createElement('div');
   bar.setAttribute('style', 'margin-top:8px;display:flex;gap:6px;');
-
   function mkBtn(label, bg, fg) {
     var b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
     b.setAttribute('style',
-      'flex:0 0 auto;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;' +
-      'font:inherit;font-weight:600;background:' + bg + ';color:' + fg + ';');
+      'border:0;border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit;font-weight:600;' +
+      'background:' + bg + ';color:' + fg + ';');
+    bar.appendChild(b);
     return b;
   }
-
-  var copy = mkBtn('複製', '#1f5fd0', '#fff');
-  copy.addEventListener('click', function () {
-    tryAutoCopy();
-    copy.textContent = '已複製 ✓';
-  });
-  bar.appendChild(copy);
-
-  var clear = mkBtn('清空', '#eceef1', '#16181d');
-  clear.addEventListener('click', function () {
-    try { localStorage.removeItem(KEY); } catch (e) {}
-    ta.value = '';
-    line.textContent = '已清空，下次按會重新開始累積';
-  });
-  bar.appendChild(clear);
-
-  var close = mkBtn('關閉', '#eceef1', '#16181d');
-  close.addEventListener('click', function () {
-    box.parentNode && box.parentNode.removeChild(box);
-  });
-  bar.appendChild(close);
-
+  var copyBtn = mkBtn('複製', '#1f5fd0', '#fff');
+  var clearBtn = mkBtn('清空', '#eceef1', '#16181d');
+  var closeBtn = mkBtn('關閉', '#eceef1', '#16181d');
   box.appendChild(bar);
   document.body.appendChild(box);
-  ta.focus();
-  ta.select();
+
+  function clipboardText(all, log) {
+    var lines = ['# 以下 #euv 開頭的行是收集紀錄，給 eu_verify 驗證頁看的，不影響網址清單'];
+    Object.keys(log).forEach(function (d) {
+      var e = log[d];
+      lines.push('#euv ' + VERSION + ' ' + JSON.stringify({
+        d: d, p: e.pages, last: !!e.last, err: e.err || null, zero: !!e.zero, r: e.r || null,
+      }));
+    });
+    return lines.concat(all).join('\n');
+  }
+
+  function renderSummary(all, log) {
+    summaryBox.textContent = '';
+    TARGETS.forEach(function (d) {
+      var n = all.filter(function (u) {
+        try { return domainOfHost(new URL(u).hostname) === d; } catch (e) { return false; }
+      }).length;
+      var e = log[d];
+      var txt, color = '#16181d';
+      if (!e) { txt = d + '：還沒收（在那一站的分頁按一次書籤）'; color = '#6b7280'; }
+      else {
+        var miss = missingPages(e.pages);
+        if (e.zero) txt = d + '：本次查詢 0 筆（Google 顯示查無結果）✓';
+        else if (e.last && !miss.length && !e.err) txt = d + '：' + pagesLabel(e.pages) + ' ✓ 已收完（' + n + ' 筆）';
+        else {
+          color = '#8a4b00';
+          var why = e.err ? e.err : (miss.length ? '缺' + pagesLabel(miss) : '還有下一頁沒收');
+          txt = d + '：' + pagesLabel(e.pages) + '（' + n + ' 筆）⚠ ' + why;
+        }
+      }
+      var row = document.createElement('div');
+      row.setAttribute('style', 'color:' + color + ';');
+      row.textContent = txt;
+      summaryBox.appendChild(row);
+    });
+  }
+
+  function writeClipboard(text) {
+    ta.value = text;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        copyStatus.setAttribute('style', 'margin-bottom:5px;color:#1a7f43;');
+        copyStatus.textContent = '✓ 已複製到剪貼簿';
+      }, function () {
+        copyStatus.setAttribute('style', 'margin-bottom:5px;color:#8a4b00;');
+        copyStatus.textContent = '⚠ 自動複製失敗（可能切走了分頁），請按下面的「複製」';
+      });
+    } else {
+      copyStatus.setAttribute('style', 'margin-bottom:5px;color:#8a4b00;');
+      copyStatus.textContent = '⚠ 這個瀏覽器不支援自動複製，請按「複製」';
+    }
+  }
+
+  copyBtn.addEventListener('click', function () {
+    ta.focus(); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    if (ok) { copyStatus.textContent = '✓ 已複製到剪貼簿'; return; }
+    writeClipboard(ta.value);
+  });
+  clearBtn.addEventListener('click', function () {
+    try { localStorage.removeItem(KEY); localStorage.removeItem(LOGKEY); } catch (e) {}
+    ta.value = ''; summaryBox.textContent = '';
+    head.textContent = '已清空，下次按會重新開始累積';
+    detail.textContent = ''; copyStatus.textContent = '';
+  });
+  closeBtn.addEventListener('click', function () { if (box.parentNode) box.parentNode.removeChild(box); });
+
+  // ---- 主流程 ----
+  (async function () {
+    var here = new URL(location.href);
+    var q = here.searchParams.get('q') || '';
+    var m = /site:([^\s)"]+)/i.exec(q);
+    var domain = m ? domainOfHost(m[1].toLowerCase().replace(/^www\./, '')) : null;
+    var start = parseInt(here.searchParams.get('start') || '0', 10) || 0;
+    var pageNo = Math.floor(start / 10) + 1;
+
+    var first = extract(document);
+    var got = first.urls.slice();
+    var pages = [pageNo];
+    var last = false, err = null, zero = false;
+
+    if (first.blocked) {
+      err = 'Google 要求人機驗證';
+    } else if (first.noResults && got.length === 0) {
+      zero = true; last = true;
+    } else if (got.length === 0 && first.opaque > 0) {
+      err = '加密連結（/goto?url=…），抓不到真實網址';
+    } else if (got.length === 0) {
+      err = '這頁沒抓到任何結果連結（Google 可能改版了）';
+    } else if (!hasNext(document)) {
+      last = true;
+    } else {
+      // 自動翻頁：同一個查詢，只改 start
+      var nextStart = start + 10;
+      for (var extra = 0; extra < MAX_EXTRA_PAGES; extra++) {
+        var pn = Math.floor(nextStart / 10) + 1;
+        head.textContent = '收集中…正在抓第 ' + pn + ' 頁';
+        await sleep(DELAY_MS);
+        var u2 = new URL(here.href);
+        u2.searchParams.set('start', String(nextStart));
+        var res;
+        try { res = await fetch(u2.pathname + u2.search, { credentials: 'include' }); }
+        catch (e) { err = '第 ' + pn + ' 頁抓取失敗（網路錯誤）'; break; }
+        if (!res.ok) { err = '第 ' + pn + ' 頁抓取失敗（HTTP ' + res.status + '）'; break; }
+        var doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        var ex = extract(doc);
+        if (ex.blocked) { err = '第 ' + pn + ' 頁：Google 要求人機驗證（已停止，未繞過）'; break; }
+        if (ex.urls.length === 0 && ex.opaque > 0) { err = '第 ' + pn + ' 頁是加密連結，抓不到'; break; }
+        if (ex.urls.length === 0 && !ex.noResults) { err = '第 ' + pn + ' 頁沒抓到任何結果連結'; break; }
+        pages.push(pn);
+        got = got.concat(ex.urls);
+        if (!hasNext(doc)) { last = true; break; }
+        nextStart += 10;
+      }
+      if (!last && !err) err = '已達自動翻頁上限（' + MAX_EXTRA_PAGES + ' 頁），後面還有，請手動按下一頁再按一次書籤';
+    }
+
+    // 合併到累積清單
+    var prev = loadJSON(KEY, []);
+    var seen = {}, all = [];
+    prev.concat(got).forEach(function (u) { if (!seen[u]) { seen[u] = 1; all.push(u); } });
+    saveJSON(KEY, all);
+
+    var log = loadJSON(LOGKEY, {});
+    if (domain) {
+      var e = log[domain] || { pages: [] };
+      var ps = e.pages.slice();
+      pages.forEach(function (p) { if (ps.indexOf(p) < 0) ps.push(p); });
+      ps.sort(function (a, b) { return a - b; });
+      log[domain] = {
+        pages: ps,
+        last: !!(e.last || last),
+        err: err,
+        zero: zero,
+        r: here.searchParams.get('tbs') || null,
+      };
+      // 最新一次有收到最後一頁、而且中間沒缺頁，舊的錯誤就不再算數
+      if (log[domain].last && !missingPages(ps).length) log[domain].err = null;
+      saveJSON(LOGKEY, log);
+    }
+
+    if (!domain) {
+      head.textContent = '⚠ 這個查詢看不出是哪一站（沒有 site: 條件）';
+      head.style.color = '#8a4b00';
+    } else if (err) {
+      head.textContent = '⚠ ' + domain + '：' + err;
+      head.style.color = '#8a4b00';
+    } else if (zero) {
+      head.textContent = '✓ ' + domain + '：本次查詢 0 筆（Google 顯示查無結果）';
+    } else {
+      head.textContent = '✓ ' + domain + '：已收完 ' + pagesLabel(pages);
+    }
+    detail.textContent = '這次按收到 ' + got.length + ' 筆，目前累積 ' + all.length + ' 筆（已去重）';
+    renderSummary(all, log);
+    writeClipboard(clipboardText(all, log));
+  })();
 }
 
 // ---- 把它掛到鈕上，並把原始碼顯示出來 -------------------------------

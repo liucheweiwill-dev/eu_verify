@@ -92,6 +92,14 @@
     font:12px/1.5 ui-monospace,Consolas,monospace; color:var(--muted); word-break:break-all; }
   .note { font-size:12.5px; color:var(--muted); margin-top:10px; }
   .note b { color:var(--ink); font-weight:600; }
+
+  /* ---- 收集狀況 ---- */
+  #coverage h2 { border:0; padding:0; margin:0 0 8px; font-size:14px; }
+  .cov { font-size:13.5px; padding:3px 0; }
+  .cov.ok { color:var(--ok); }
+  .cov.bad { color:var(--warn); font-weight:600; }
+  .cov.none { color:var(--muted); }
+  .covwarn { margin-top:10px; font-size:13px; color:var(--warn); }
 </style>
 </head>
 <body>
@@ -126,7 +134,12 @@
   <div class="panel">
     <p class="step"><b>② 收集</b>　在剛開的三個 Google 分頁上各按一次書籤</p>
     <p class="note">
-      書籤會跨分頁累積並自動複製到剪貼簿。還沒裝的話，<a href="./bookmarklet.html">安裝頁在這裡</a>。
+      停在第 1 頁按就好，<b>後面幾頁書籤會自己抓</b>。面板變成 ✓ 再切到下一個分頁。
+      三站都收完，回到這裡按「貼上並比對」。
+    </p>
+    <p class="note">
+      還沒裝、或面板標題不是「收集器 v2」的話，<a href="./bookmarklet.html">到安裝頁重新拖一次</a>——
+      舊版只收第 1 頁，會漏掉後面的結果。
     </p>
   </div>
 
@@ -137,15 +150,25 @@
       <b>①②不受影響</b>，它們沒有任何第三方依賴。</p>
     <textarea id="input" spellcheck="false" placeholder="https://www.eeas.europa.eu/...&#10;https://www.nato.int/..."></textarea>
     <div class="row">
-      <button class="ghost" id="paste" type="button">從剪貼簿貼上</button>
-      <button class="primary" id="run" type="button">開始比對</button>
+      <button class="primary" id="paste" type="button">貼上並比對</button>
+      <button class="ghost" id="run" type="button">只比對框裡的內容</button>
       <button class="ghost" id="clear" type="button">清空</button>
     </div>
     <div class="status" id="status"></div>
     <div class="progress" id="progress" hidden></div>
   </div>
 
+  <!-- 收集狀況：讀書籤 v2 附在剪貼簿裡的 #euv 紀錄。
+       這塊在驗證之前就顯示，驗證失敗也照樣在——它回答的是「送去驗證的清單
+       本身完不完整」，跟驗證結果是兩回事。 -->
+  <div id="coverage" class="panel" hidden></div>
+
   <div id="tally" class="tally" hidden></div>
+  <div id="copyRow" class="row" hidden style="margin:-4px 0 16px;">
+    <button class="primary" id="copyList" type="button">複製正文確認清單</button>
+    <span class="status" id="copyStatus" style="margin:0;"></span>
+  </div>
+  <textarea id="copyFallback" hidden readonly style="min-height:160px;margin-bottom:16px;"></textarea>
   <div id="results"></div>
 
   <footer>
@@ -184,6 +207,11 @@
   var STORE_KEY = 'eu-nato-monitor-v2';
   var qdr = 'w';
 
+  // 最近一次比對的結果、收集紀錄、收集狀況——給「複製正文確認清單」用
+  var lastResults = [];
+  var lastLogs = {};
+  var lastCoverage = [];
+
   var els = {
     seg: document.getElementById('seg'),
     go: document.getElementById('go'),
@@ -195,7 +223,12 @@
     clear: document.getElementById('clear'),
     status: document.getElementById('status'),
     progress: document.getElementById('progress'),
+    coverage: document.getElementById('coverage'),
     tally: document.getElementById('tally'),
+    copyRow: document.getElementById('copyRow'),
+    copyList: document.getElementById('copyList'),
+    copyStatus: document.getElementById('copyStatus'),
+    copyFallback: document.getElementById('copyFallback'),
     results: document.getElementById('results'),
     verifyNote: document.getElementById('verifyNote'),
     unknownNote: document.getElementById('unknownNote'),
@@ -509,6 +542,130 @@
     els.unknownNote.textContent = unknown.length
       ? '本次有 ' + unknown.length + ' 筆無法檢查，那幾筆既不是命中也不是未命中，請自己開來看。'
       : '';
+
+    lastResults = results;
+    els.copyRow.hidden = false;
+    els.copyList.disabled = confirmed.length === 0;
+    els.copyList.textContent = confirmed.length
+      ? '複製正文確認清單（' + confirmed.length + ' 筆）'
+      : '沒有正文確認的結果可以複製';
+  }
+
+  // ---------------------------------------------------------------- 收集狀況
+
+  // 書籤 v2 會在剪貼簿裡附上這種行：
+  //   #euv v2 {"d":"eeas.europa.eu","p":[1,2],"last":true,"err":null,"zero":false,"r":"qdr:w"}
+  // 網址擷取（harvest）只認 http(s):// 開頭的字串，所以這些行不會被誤當成網址；
+  // extract.js（run.cmd／Actions 用的）也一樣會忽略它們。
+  function parseCollectLog(text) {
+    var logs = {};
+    text.split(/\r?\n/).forEach(function (line) {
+      var m = /^#euv\s+v\d+\s+(\{.*\})\s*$/.exec(line.trim());
+      if (!m) return;
+      try {
+        var o = JSON.parse(m[1]);
+        if (o && typeof o.d === 'string') logs[o.d] = o;
+      } catch (e) { /* 壞掉的紀錄行就當沒有 */ }
+    });
+    return logs;
+  }
+
+  function pagesLabel(ps) {
+    if (!ps || !ps.length) return '';
+    ps = ps.slice().sort(function (a, b) { return a - b; });
+    var contiguous = ps.every(function (p, i) { return i === 0 || p === ps[i - 1] + 1; });
+    if (contiguous) return ps.length === 1 ? '第 ' + ps[0] + ' 頁' : '第 ' + ps[0] + '–' + ps[ps.length - 1] + ' 頁';
+    return '第 ' + ps.join('、') + ' 頁';
+  }
+
+  function missingPages(ps) {
+    if (!ps || !ps.length) return [];
+    var max = Math.max.apply(null, ps), out = [];
+    for (var p = 1; p <= max; p++) if (ps.indexOf(p) < 0) out.push(p);
+    return out;
+  }
+
+  var QDR_LABEL = { 'qdr:d': '過去 24 小時', 'qdr:w': '過去一週', 'qdr:m': '過去一個月' };
+
+  // 回傳每一站的收集狀況；同時畫到畫面上。
+  // 狀態只有三種：ok（確定收完）、bad（確定沒收完或出錯）、none（不知道）。
+  // 「不知道」不能被當成「沒問題」——那正是這個專案要避免的誤判。
+  function computeCoverage(urls, logs) {
+    var hasAnyLog = Object.keys(logs).length > 0;
+    return SITES.map(function (s) {
+      var n = urls.filter(function (u) {
+        try { var h = new URL(u).hostname; return h === s.domain || h.slice(-(s.domain.length + 1)) === '.' + s.domain; }
+        catch (e) { return false; }
+      }).length;
+      var e = logs[s.domain];
+      var name = s.name || s.domain;
+      if (e) {
+        var miss = missingPages(e.p);
+        if (e.zero) return { name: name, cls: 'ok', text: '本次查詢 0 筆（Google 顯示查無結果）' };
+        if (e.last && !miss.length && !e.err) return { name: name, cls: 'ok', text: pagesLabel(e.p) + '，已收完（' + n + ' 筆）' };
+        var why = e.err ? e.err : (miss.length ? '缺' + pagesLabel(miss) : '還有下一頁沒收');
+        return { name: name, cls: 'bad', text: pagesLabel(e.p) + '（' + n + ' 筆）— ' + why };
+      }
+      if (n > 0) return { name: name, cls: 'bad', text: n + ' 筆，但沒有收集紀錄——' +
+        (hasAnyLog ? '這站可能是用舊版書籤收的' : '手動貼上或舊版書籤') + '，無法確認是否收完所有頁' };
+      return { name: name, cls: 'bad', text: '沒有收到這站的網址——是這段期間真的沒結果，還是沒在那個分頁按書籤？' };
+    });
+  }
+
+  function renderCoverage(cov, logs) {
+    els.coverage.textContent = '';
+    var h = document.createElement('h2');
+    h.textContent = '收集狀況';
+    els.coverage.appendChild(h);
+    cov.forEach(function (c) {
+      var d = document.createElement('div');
+      d.className = 'cov ' + c.cls;
+      d.textContent = (c.cls === 'ok' ? '✓ ' : '⚠ ') + c.name + '：' + c.text;
+      els.coverage.appendChild(d);
+    });
+    var ranges = {};
+    Object.keys(logs).forEach(function (k) { if (logs[k].r) ranges[logs[k].r] = 1; });
+    var rs = Object.keys(ranges);
+    if (rs.length > 1) {
+      var w = document.createElement('div');
+      w.className = 'covwarn';
+      w.textContent = '⚠ 三站的時間範圍不一致（' + rs.map(function (r) { return QDR_LABEL[r] || r; }).join('／') +
+        '）——可能有分頁是用不同設定開的。';
+      els.coverage.appendChild(w);
+    }
+    if (cov.some(function (c) { return c.cls !== 'ok'; })) {
+      var n = document.createElement('div');
+      n.className = 'covwarn';
+      n.textContent = '⚠ 收集不完整。下面的驗證結果只涵蓋已收到的網址——沒收到的頁面不會出現在任何一類裡，' +
+        '請先把標 ⚠ 的站補收完，再重新比對。';
+      els.coverage.appendChild(n);
+    }
+    els.coverage.hidden = false;
+  }
+
+  // 「把真的有的條列出來」——只列正文確認，但結尾一定附上沒列入的數量與收集狀況。
+  // 這份清單很可能會被貼進別的地方，讀的人看不到這個頁面；
+  // 不附上的話，別人會以為這就是全部。
+  function buildConfirmedList(results) {
+    var confirmed = results.filter(function (r) { return r.state === 'confirmed'; });
+    var chrome = results.filter(function (r) { return r.state === 'chrome'; }).length;
+    var unknown = results.filter(function (r) { return r.state === 'unknown'; }).length;
+    var ranges = {};
+    Object.keys(lastLogs).forEach(function (k) { if (lastLogs[k].r) ranges[lastLogs[k].r] = 1; });
+    var rs = Object.keys(ranges).map(function (r) { return QDR_LABEL[r] || r; });
+    var now = new Date().toLocaleString('zh-TW', { hour12: false });
+    var out = ['正文確認清單（' + now + (rs.length ? '，時間範圍：' + rs.join('／') : '') + '）', ''];
+    confirmed.forEach(function (r, i) {
+      out.push((i + 1) + '. ' + (r.title || r.url));
+      out.push('   ' + r.url);
+      out.push('   命中：' + r.hits.map(function (h) { return h.kw + ' ×' + h.count; }).join('、'));
+    });
+    out.push('');
+    out.push('—— 未列入：只在導覽列 ' + chrome + ' 筆、無法檢查 ' + unknown + ' 筆（無法檢查的不代表沒有命中）。');
+    out.push('—— 收集狀況：' + lastCoverage.map(function (c) {
+      return (c.cls === 'ok' ? '✓' : '⚠') + c.name + ' ' + c.text;
+    }).join('；'));
+    return out.join('\n');
   }
 
   // ---------------------------------------------------------------- 主流程
@@ -528,26 +685,38 @@
 
   async function run() {
     els.run.disabled = true;
+    els.paste.disabled = true;
     els.results.innerHTML = '';
     els.tally.hidden = true;
+    els.coverage.hidden = true;
+    els.copyRow.hidden = true;
+    els.copyFallback.hidden = true;
+    els.copyStatus.textContent = '';
     els.verifyNote.hidden = true;
     els.progress.hidden = false;
     els.progress.textContent = '';
     baselineCache = {};
+    lastResults = [];
+
+    function done() { els.run.disabled = false; els.paste.disabled = false; }
 
     try {
       if (SITES.length === 0) await loadSites();
     } catch (e) {
       els.status.textContent = '⚠ 設定檔載入失敗：' + e.message;
-      els.run.disabled = false;
+      done();
       return;
     }
 
     var urls = harvest(els.input.value);
+    lastLogs = parseCollectLog(els.input.value);
+    lastCoverage = computeCoverage(urls, lastLogs);
+    renderCoverage(lastCoverage, lastLogs);   // 先講「清單完不完整」，再講驗證結果
+
     if (urls.length === 0) {
       els.status.textContent = '⚠ 沒有找到任何目標站網址。這不代表「今天沒有新東西」，只代表這次沒讀到網址——請確認貼的內容裡真的有 eeas／consilium／nato 的結果連結。';
       els.progress.hidden = true;
-      els.run.disabled = false;
+      done();
       return;
     }
 
@@ -567,8 +736,10 @@
       render(results); // 逐筆更新畫面，不用等全部跑完
     }
 
-    els.status.textContent = '完成。共 ' + urls.length + ' 筆。';
-    els.run.disabled = false;
+    var incomplete = lastCoverage.some(function (c) { return c.cls !== 'ok'; });
+    els.status.textContent = '完成。共 ' + urls.length + ' 筆。' +
+      (incomplete ? '⚠ 但收集不完整，見上面「收集狀況」。' : '');
+    done();
   }
 
   // ---------------------------------------------------------------- 事件
@@ -599,26 +770,51 @@
     els.warn.style.display = blocked ? 'block' : 'none';
   });
 
+  // 貼上並比對：讀剪貼簿 → 填進框 → 直接跑。
+  // 讀不到剪貼簿時不要偷偷用框裡的舊內容去跑——那可能是上一輪的資料，
+  // 跑出來的結果會被誤認為是這一輪的。停下來講清楚，讓人自己決定。
   els.paste.addEventListener('click', function () {
     if (!navigator.clipboard || !navigator.clipboard.readText) {
-      els.status.textContent = '這個瀏覽器不支援自動讀取剪貼簿，請手動貼上（Ctrl+V）。';
+      els.status.textContent = '⚠ 這個瀏覽器不支援自動讀取剪貼簿。請在框裡手動貼上（Ctrl+V），再按「只比對框裡的內容」。';
       return;
     }
     navigator.clipboard.readText().then(function (text) {
       els.input.value = text;
-      els.status.textContent = '已從剪貼簿貼上。';
+      run();
     }, function () {
-      els.status.textContent = '讀取剪貼簿被拒絕，請手動貼上（Ctrl+V）。';
+      els.status.textContent = '⚠ 讀取剪貼簿被拒絕。請在框裡手動貼上（Ctrl+V），再按「只比對框裡的內容」。';
     });
+  });
+
+  els.copyList.addEventListener('click', function () {
+    var text = buildConfirmedList(lastResults);
+    function fallback() {
+      els.copyFallback.value = text;
+      els.copyFallback.hidden = false;
+      els.copyFallback.focus();
+      els.copyFallback.select();
+      els.copyStatus.textContent = '⚠ 自動複製失敗，已選取下面的文字，請按 Ctrl+C。';
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        els.copyStatus.textContent = '✓ 已複製（結尾附有未列入的數量與收集狀況）';
+      }, fallback);
+    } else {
+      fallback();
+    }
   });
 
   els.clear.addEventListener('click', function () {
     els.input.value = '';
     els.results.innerHTML = '';
     els.tally.hidden = true;
+    els.coverage.hidden = true;
+    els.copyRow.hidden = true;
+    els.copyFallback.hidden = true;
     els.verifyNote.hidden = true;
     els.progress.hidden = true;
     els.status.textContent = '';
+    lastResults = [];
   });
 
   els.run.addEventListener('click', run);

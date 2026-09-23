@@ -104,6 +104,8 @@ jobs:
           echo "::error::沒有抓到任何目標站網址，中止。"
           exit 1
 
+      # extracted-urls.txt 裡除了網址，還有 extract.js 原樣傳下來的 #euv 收集紀錄行，
+      # verify.js 會讀它來判斷每一站有沒有收完所有頁。
       - name: 執行比對
         run: node verify.js extracted-urls.txt -o latest-report.html --summary-json summary.json
 
@@ -129,7 +131,16 @@ jobs:
           CONFIRMED=$(node -p "require('./summary.json').confirmed")
           CHROME=$(node -p "require('./summary.json').chrome")
           UNKNOWN=$(node -p "require('./summary.json').unknown")
+          # 收集狀況的文字有一部分來自 issue 內文裡的 #euv 紀錄行。這裡只做變數展開，
+          # 展開後的值不會被 shell 再解析一次，所以內容裡就算有 $() 也不會被執行。
+          COVERAGE=$(node -p "require('./summary.json').coverage.map(function(l){return '- '+l}).join('\n')")
+          INCOMPLETE=$(node -p "require('./summary.json').incomplete ? '**⚠ 收集不完整**——下面的數字只涵蓋已收到的網址，沒收到的頁面不在任何一類裡。' : ''")
           gh issue comment "${{ github.event.issue.number }}" --body "$(cat <<BODY
+          ${INCOMPLETE}
+
+          收集狀況：
+          ${COVERAGE}
+
           正文確認 ${CONFIRMED}　只在導覽列 ${CHROME}　無法檢查 ${UNKNOWN}
 
           完整報告：https://liucheweiwill-dev.github.io/eu_verify/latest-report.html

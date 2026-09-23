@@ -226,6 +226,59 @@ async function checkUrl(rawUrl) {
 
 // ---------------------------------------------------------------- 報告
 
+// ---------------------------------------------------------------- 收集狀況
+
+// 書籤 v2 附在剪貼簿裡的 #euv 紀錄行，經 extract.js 原樣傳到這裡。
+// 規則跟 index.html 的 computeCoverage 完全一樣——三條路要講一樣的話。
+// 狀態只有 ok／bad 兩種：沒有紀錄一律算 bad，「不知道」不能被當成「沒問題」。
+function parseCollectLog(lines) {
+  const logs = {};
+  lines.forEach((line) => {
+    const m = /^#euv\s+v\d+\s+(\{.*\})\s*$/.exec(line.trim());
+    if (!m) return;
+    try { const o = JSON.parse(m[1]); if (o && typeof o.d === 'string') logs[o.d] = o; }
+    catch (e) { /* 壞掉的紀錄行就當沒有 */ }
+  });
+  return logs;
+}
+
+function pagesLabel(ps) {
+  if (!ps || !ps.length) return '';
+  ps = ps.slice().sort((a, b) => a - b);
+  const contiguous = ps.every((p, i) => i === 0 || p === ps[i - 1] + 1);
+  if (contiguous) return ps.length === 1 ? '第 ' + ps[0] + ' 頁' : '第 ' + ps[0] + '–' + ps[ps.length - 1] + ' 頁';
+  return '第 ' + ps.join('、') + ' 頁';
+}
+
+function missingPages(ps) {
+  if (!ps || !ps.length) return [];
+  const max = Math.max(...ps), out = [];
+  for (let p = 1; p <= max; p++) if (ps.indexOf(p) < 0) out.push(p);
+  return out;
+}
+
+function computeCoverage(urls, logs) {
+  const hasAnyLog = Object.keys(logs).length > 0;
+  return SITES.map((s) => {
+    const n = urls.filter((u) => {
+      try { const h = new URL(u).hostname; return h === s.domain || h.endsWith('.' + s.domain); }
+      catch (e) { return false; }
+    }).length;
+    const e = logs[s.domain];
+    const name = s.name || s.domain;
+    if (e) {
+      const miss = missingPages(e.p);
+      if (e.zero) return { name, ok: true, text: '本次查詢 0 筆（Google 顯示查無結果）' };
+      if (e.last && !miss.length && !e.err) return { name, ok: true, text: pagesLabel(e.p) + '，已收完（' + n + ' 筆）' };
+      const why = e.err ? e.err : (miss.length ? '缺' + pagesLabel(miss) : '還有下一頁沒收');
+      return { name, ok: false, text: pagesLabel(e.p) + '（' + n + ' 筆）— ' + why };
+    }
+    if (n > 0) return { name, ok: false, text: n + ' 筆，但沒有收集紀錄——' +
+      (hasAnyLog ? '這站可能是用舊版書籤收的' : '手動貼上或舊版書籤') + '，無法確認是否收完所有頁' };
+    return { name, ok: false, text: '沒有收到這站的網址——是這段期間真的沒結果，還是沒在那個分頁按書籤？' };
+  });
+}
+
 function renderHtml(results, meta) {
   const confirmed = results.filter((r) => r.state === 'confirmed');
   const chrome = results.filter((r) => r.state === 'chrome');
@@ -326,6 +379,12 @@ function renderHtml(results, meta) {
   <h1>比對結果</h1>
   <p class="sub">${escapeHtml(meta.generatedAt)}　·　輸入 ${meta.total} 筆　·　來源：${escapeHtml(meta.source)}</p>
 
+  <section class="${meta.coverage.every((c) => c.ok) ? 'ok' : 'unknown'}">
+    <h2>收集狀況</h2>
+    ${meta.coverage.map((c) => '<div>' + (c.ok ? '✓ ' : '⚠ ') + escapeHtml(c.name) + '：' + escapeHtml(c.text) + '</div>').join('\n    ')}
+    ${meta.coverage.every((c) => c.ok) ? '' : '<div class="why">⚠ 收集不完整。下面的結果只涵蓋已收到的網址——沒收到的頁面不會出現在任何一類裡。</div>'}
+  </section>
+
   <div class="tally">
     <div><b>${confirmed.length}</b>正文確認</div>
     <div><b>${chrome.length}</b>只在導覽列</div>
@@ -366,8 +425,9 @@ async function main() {
     process.exit(1);
   }
 
-  const urls = fs.readFileSync(input, 'utf8')
-    .split(/\r?\n/)
+  const rawLines = fs.readFileSync(input, 'utf8').split(/\r?\n/);
+  const logs = parseCollectLog(rawLines);
+  const urls = rawLines
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('#'));
 
@@ -375,6 +435,15 @@ async function main() {
     console.error(input + ' 裡沒有任何網址。');
     process.exit(1);
   }
+
+  // 先講「送來的清單完不完整」，再講驗證結果
+  const coverage = computeCoverage(urls, logs);
+  console.log('收集狀況：');
+  coverage.forEach((c) => console.log('  ' + (c.ok ? '✓ ' : '⚠ ') + c.name + '：' + c.text));
+  if (!coverage.every((c) => c.ok)) {
+    console.log('  ⚠ 收集不完整。下面的結果只涵蓋已收到的網址。');
+  }
+  console.log('');
 
   console.log('要檢查 ' + urls.length + ' 個網址…\n');
 
@@ -393,6 +462,7 @@ async function main() {
     generatedAt: new Date().toLocaleString('zh-TW', { hour12: false }),
     total: urls.length,
     source: path.basename(input),
+    coverage,
   };
   fs.writeFileSync(output, renderHtml(results, meta), 'utf8');
 
@@ -411,6 +481,8 @@ async function main() {
       chrome: n('chrome'),
       unknown: n('unknown'),
       generatedAt: meta.generatedAt,
+      incomplete: !coverage.every((c) => c.ok),
+      coverage: coverage.map((c) => (c.ok ? '✓ ' : '⚠ ') + c.name + '：' + c.text),
     }, null, 2), 'utf8');
   }
 }
