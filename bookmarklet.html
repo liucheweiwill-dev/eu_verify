@@ -146,6 +146,11 @@ function collector() {
   line.textContent = '目前累積 ' + all.length + ' 筆（已去重）';
   box.appendChild(line);
 
+  var copyStatus = document.createElement('div');
+  copyStatus.setAttribute('style', 'margin-bottom:8px;color:#1a7f43;');
+  copyStatus.textContent = '複製中…';
+  box.appendChild(copyStatus);
+
   if (found.length === 0) {
     var warn = document.createElement('div');
     warn.setAttribute('style', 'color:#8a4b00;margin-bottom:8px;');
@@ -162,6 +167,32 @@ function collector() {
     'background:#f7f8fa;color:#16181d;');
   box.appendChild(ta);
 
+  // 按書籤這個動作本身就是使用者手勢，所以這裡可以直接嘗試自動複製，
+  // 不用等使用者再按一次「複製」。失敗的話（權限被擋、無痕視窗等）
+  // 下面的按鈕還在，可以手動按。
+  function tryAutoCopy() {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).then(function () {
+        copyStatus.textContent = '✓ 已自動複製到剪貼簿，可以直接回去跑 run.cmd';
+      }, function () {
+        fallbackCopy();
+      });
+    } else {
+      fallbackCopy();
+    }
+  }
+  function fallbackCopy() {
+    ta.focus();
+    ta.select();
+    var done = false;
+    try { done = document.execCommand('copy'); } catch (e) { done = false; }
+    copyStatus.setAttribute('style', 'margin-bottom:8px;color:' + (done ? '#1a7f43' : '#8a4b00') + ';');
+    copyStatus.textContent = done
+      ? '✓ 已自動複製到剪貼簿，可以直接回去跑 run.cmd'
+      : '⚠ 自動複製失敗，請按下面的「複製」';
+  }
+  tryAutoCopy();
+
   var bar = document.createElement('div');
   bar.setAttribute('style', 'margin-top:8px;display:flex;gap:6px;');
 
@@ -177,18 +208,8 @@ function collector() {
 
   var copy = mkBtn('複製', '#1f5fd0', '#fff');
   copy.addEventListener('click', function () {
-    ta.select();
-    var done = false;
-    try { done = document.execCommand('copy'); } catch (e) { done = false; }
-    if (!done && navigator.clipboard) {
-      navigator.clipboard.writeText(ta.value).then(function () {
-        copy.textContent = '已複製 ✓';
-      }, function () {
-        copy.textContent = '複製失敗，請手動選取';
-      });
-      return;
-    }
-    copy.textContent = done ? '已複製 ✓' : '複製失敗，請手動選取';
+    tryAutoCopy();
+    copy.textContent = '已複製 ✓';
   });
   bar.appendChild(copy);
 
