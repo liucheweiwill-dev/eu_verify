@@ -1,16 +1,19 @@
 {
-  "_comment": "verify.js 與 index.html 共用的站台設定。要跟 eu_monitor/index.html 的 SITES.kw 保持一致——那邊改了這邊要跟著改，見 README.md「已知限制」。",
+  "_comment": "verify.js 與 index.html 共用的站台設定。要跟 eu_monitor/index.html 的 SITES 保持一致——那邊改了這邊要跟著改，見 README.md「已知限制」。",
   "sites": [
     {
+      "name": "EEAS（歐盟對外事務部）",
       "domain": "eeas.europa.eu",
       "kw": "Taiwan Strait;cross-Strait;Chinese;PRC;Beijing;South China Sea;the Indo-Pacific;Indo-Pacific region;NATO;drone;cables"
     },
     {
+      "name": "Council of the EU（歐盟理事會）",
       "domain": "consilium.europa.eu",
       "kw": "Taiwan;China;Chinese;PRC;NATO;drone;cables;Indo-Pacific",
       "knownBlocked": "該站對所有自動化客戶端回 403（JS 指紋挑戰），連無頭瀏覽器也過不去。"
     },
     {
+      "name": "NATO（北約）",
       "domain": "nato.int",
       "kw": "Chinese;PRC;Beijing;Indo-Pacific partners;South China Sea;drone;cables"
     }

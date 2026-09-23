@@ -7,6 +7,29 @@ eu_monitor 是單檔、零依賴、零建置的啟動器，它的價值就在於
 這隻工具壞掉時不應該影響你每天按的那顆鈕。
 （eu_monitor 的 `docs/AGENT_BRIEF.md` §7 就是這樣規定的。）
 
+## 網頁版現在把搜尋也包進來了
+
+`index.html` 從上到下就是一整條流程，不用在兩個網址之間跳：
+
+```
+① 搜尋   時間範圍 + 開三個 Google 分頁（關鍵字可直接編輯）
+② 收集   在三個分頁上各按一次書籤（自動複製到剪貼簿）
+③ 驗證   貼上 → 開始比對 → 結果就在下面
+```
+
+**關鍵字不會對不起來。** ①用來搜尋的關鍵字和③用來驗證的關鍵字是同一份資料，
+在頁面上改一次兩邊同時生效——整合最怕的那個 bug 在這裡結構上不可能發生。
+
+而且 `index.html` 跟 [eu_monitor](https://liucheweiwill-dev.github.io/eu_monitor/)
+**同源**（都在 `liucheweiwill-dev.github.io`，路徑不影響同源判定，2026-09-23 實測確認），
+共用同一個 localStorage key `eu-nato-monitor-v2`。所以在 eu_monitor 改關鍵字，
+整合版也會跟著變，反之亦然。兩個入口不會漂移。
+
+⚠️ **①②完全不依賴 Jina**，它們只是組 Google 網址、開分頁。Jina 哪天掛了，
+搜尋與收集照常能用，只有③會整批顯示「無法檢查」。
+
+eu_monitor 維持原樣不動，它仍然是零依賴、零第三方、最不會壞的那個入口。
+
 ## 三種跑法，同一套判定邏輯
 
 | | 本機版（`run.cmd`） | 網頁版（`index.html`） | GitHub Actions 版 |
@@ -82,13 +105,13 @@ node extract.js --text clip.txt     # 只做網址抽取，印到 stdout
 
 ## 網頁版：不用裝東西，開網址就能用
 
-`index.html` 做的是一模一樣的事，但跑在瀏覽器裡，發布在 GitHub Pages 上
-（要發布前先看下面「網頁版怎麼運作」的依賴說明）。
+`index.html` 跑在瀏覽器裡，發布在 GitHub Pages 上，而且把①②③接成一整頁
+（要用之前先看下面「網頁版怎麼運作」的依賴說明）。
 
 ```
-① 在 eu_monitor 按「開啟三個分頁」
-② 在三個 Google 分頁上各按一次書籤（同上）
-③ 開網頁版的網址 → 按「從剪貼簿貼上」→ 按「開始比對」
+① 在這一頁上方選時間範圍 → 按「開啟三個分頁」
+② 在三個 Google 分頁上各按一次書籤（自動複製）
+③ 回到這一頁 → 按「從剪貼簿貼上」→ 按「開始比對」
 ```
 
 結果直接畫在同一頁下面，逐筆更新，不用等全部跑完才看得到。三種分類、
@@ -244,11 +267,19 @@ Google Alerts 被否決的原因（見 eu_monitor 的 `docs/AGENT_BRIEF.md` §3�
 如果某站改成用 JS 才渲染正文，這隻工具會看不到內容、把真命中判成「只在導覽列」。
 目前 eeas.europa.eu 與 nato.int 都是伺服器端輸出，沒這個問題。
 
-**5. 關鍵字要手動跟 eu_monitor 同步。**
-`verify.js` 與 `index.html` 現在共用同一份 `sites.json`，eu_verify 內部
-不會再各寫一套。但那份 `sites.json` 本身還是從 `eu_monitor/index.html` 的
-`SITES` 抄來的——那邊改了，這邊的 `sites.json` 要跟著改，不然比對的是舊關鍵字。
-兩個 repo 之間沒有辦法自動同步（不合併 repo 的理由見 eu_monitor 的 CLAUDE.md）。
+**5. 預設關鍵字要手動跟 eu_monitor 同步；使用者改過的不用。**
+
+分兩層看：
+
+- **使用者在頁面上改的**：自動同步。兩頁同源、共用 localStorage key
+  `eu-nato-monitor-v2`，在哪邊改都一樣。這層不用管。
+- **檔案裡的預設值**：要手動同步。`eu_verify/sites.json` 是從
+  `eu_monitor/index.html` 的 `SITES` 抄來的，那邊改了這邊要跟著改。
+  兩個 repo 之間沒辦法自動同步（不合併 repo 的理由見 eu_monitor 的 CLAUDE.md）。
+
+實務上第二層只在「全新瀏覽器、localStorage 還是空的」時才看得出差異——
+一旦任一頁存過一次，存的值就會蓋掉兩邊的預設。也就是說**檔案漂移不容易被發現**，
+改預設關鍵字時要記得兩邊都改。
 
 **6. 基準線探測路徑必須固定，不能用時間戳記。**
 2026-09-23 發現：EEAS 的 404 頁內容會隨探測路徑微幅變動（猜測跟「你是不是要找

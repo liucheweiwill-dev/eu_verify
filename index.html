@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>eu_verify — 網頁版</title>
+<title>EU / NATO 輿情監看 — 搜尋與驗證</title>
 <style>
   :root { color-scheme: light dark;
     --bg:#f6f7f9; --card:#fff; --ink:#16181d; --muted:#6b7280; --line:#e3e6ea;
@@ -63,20 +63,78 @@
     border-top:1px solid var(--line); padding-top:14px; }
   footer b { color:var(--ink); }
   [hidden] { display:none !important; }
+
+  /* ---- ① 搜尋那段（行為與視覺沿用 eu_monitor）---- */
+  .step { font-size:12.5px; color:var(--muted); font-weight:700; letter-spacing:.04em;
+    margin:0 0 8px; }
+  .step b { color:var(--ink); font-size:14px; letter-spacing:0; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .seg button { appearance:none; border:0; background:transparent; color:var(--ink);
+    padding:7px 14px; font:inherit; font-size:13.5px; font-weight:400; cursor:pointer; }
+  .seg button + button { border-left:1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .go { appearance:none; border:0; border-radius:10px; background:var(--accent);
+    color:var(--accent-ink); font:inherit; font-size:15.5px; font-weight:700;
+    padding:13px 22px; cursor:pointer; width:100%; margin-top:14px; }
+  .go:active { transform:translateY(1px); }
+  .warn { display:none; margin-top:12px; padding:10px 12px; background:#fff4e5;
+    color:#7a4a00; border:1px solid #f0d3a8; border-radius:9px; font-size:13px; }
+  @media (prefers-color-scheme: dark) {
+    .warn { background:#33270f; color:#f3d9a8; border-color:#574424; }
+  }
+  .site { border-top:1px solid var(--line); padding-top:14px; margin-top:14px; }
+  .site:first-of-type { border-top:0; padding-top:0; margin-top:0; }
+  .site h3 { font-size:14px; margin:0 0 8px; font-weight:600; }
+  .site h3 a { color:var(--accent); text-decoration:none; }
+  .site h3 a:hover { text-decoration:underline; }
+  .site textarea { min-height:52px; }
+  .q { margin-top:8px; padding:9px 10px; background:var(--code); border-radius:8px;
+    font:12px/1.5 ui-monospace,Consolas,monospace; color:var(--muted); word-break:break-all; }
+  .note { font-size:12.5px; color:var(--muted); margin-top:10px; }
+  .note b { color:var(--ink); font-weight:600; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <h1>eu_verify — 網頁版</h1>
-  <p class="sub">貼上 Google 結果的網址，檢查關鍵字是真的在正文裡，還是只在導覽列裡。</p>
-  <p class="depend">⚠ 抓取經由第三方服務 <a href="https://r.jina.ai" target="_blank" rel="noopener noreferrer">r.jina.ai</a>（Jina AI Reader）中轉——
-    這代表你查的網址會被那個服務看到。不想經過第三方的話，改用本機的 <code>run.cmd</code>（見 README）。</p>
+  <h1>EU / NATO 輿情監看</h1>
+  <p class="sub">搜尋三站 → 收集網址 → 驗證關鍵字是真的在正文裡，還是只在導覽列裡。</p>
+
+  <!-- ① 搜尋：這段完全不依賴 Jina，只是組 Google 網址、開分頁。
+       Jina 掛掉時①②照樣能用，只有③會顯示「無法檢查」。 -->
+  <div class="panel">
+    <p class="step"><b>① 搜尋</b>　開三個 Google 分頁</p>
+    <div class="row">
+      <span style="font-size:12.5px;color:var(--muted);font-weight:600;">時間範圍</span>
+      <div class="seg" id="seg">
+        <button type="button" data-qdr="d">過去 24 小時</button>
+        <button type="button" data-qdr="w" aria-pressed="true">過去一週</button>
+        <button type="button" data-qdr="m">過去一個月</button>
+      </div>
+    </div>
+    <button class="go" id="go" type="button">開啟三個分頁</button>
+    <div class="warn" id="warn">
+      瀏覽器擋掉了部分分頁。請在網址列右側允許此頁的彈出視窗，或直接點下方各站標題。
+    </div>
+    <p class="note">
+      預設為<b>過去一週</b>：Google 收錄有延遲，用「過去 24 小時」會漏掉昨天發布、今天才被收錄的文章。
+    </p>
+    <div id="sites"></div>
+  </div>
+
+  <!-- ② 收集：純提示，沒有互動——書籤跑在 google.com 上，這頁碰不到它 -->
+  <div class="panel">
+    <p class="step"><b>② 收集</b>　在剛開的三個 Google 分頁上各按一次書籤</p>
+    <p class="note">
+      書籤會跨分頁累積並自動複製到剪貼簿。還沒裝的話，<a href="./bookmarklet.html">安裝頁在這裡</a>。
+    </p>
+  </div>
 
   <div class="panel">
-    <label for="input" style="font-size:12.5px;color:var(--muted);font-weight:600;">
-      網址清單（書籤複製的內容直接貼上即可，一行或混在一段文字裡都可以）
-    </label>
+    <p class="step"><b>③ 驗證</b>　貼上收集到的網址，逐頁比對</p>
+    <p class="depend">⚠ 這一步的抓取經由第三方服務 <a href="https://r.jina.ai" target="_blank" rel="noopener noreferrer">r.jina.ai</a>（Jina AI Reader）中轉——
+      這代表你驗證的網址會被那個服務看到。不想經過第三方的話，改用本機的 <code>run.cmd</code>（見 README）。
+      <b>①②不受影響</b>，它們沒有任何第三方依賴。</p>
     <textarea id="input" spellcheck="false" placeholder="https://www.eeas.europa.eu/...&#10;https://www.nato.int/..."></textarea>
     <div class="row">
       <button class="ghost" id="paste" type="button">從剪貼簿貼上</button>
@@ -90,11 +148,20 @@
   <div id="tally" class="tally" hidden></div>
   <div id="results"></div>
 
-  <footer id="footer" hidden>
-    <b>判讀提醒：</b>「只在導覽列」代表該頁的關鍵字命中數沒有超過同站基準線頁的命中數，
-    也就是那些字很可能只出現在全站共用的選單裡。這是<b>精確度</b>工具——
-    它只能從 Google 給的清單裡剔除假命中，<b>不會、也不可能告訴你有沒有漏掉什麼</b>。
-    <span id="unknownNote"></span>
+  <footer>
+    <!-- 這段是 eu_monitor footer 的原文，整段搬過來。
+         它是 AGENT_BRIEF §6 的七條不可破壞約束之一——整合版變成每天看結果的
+         地方之後，這段話更不能少。不要刪。 -->
+    <b>判讀提醒：</b>搜尋結果為空，只代表「這次查詢沒看到新項目」，
+    不代表這三站真的沒有新內容——Google 不保證每一頁都會被收錄。
+    若某站長期都是空的，先手動去該站官網列表對一次再下結論。
+
+    <span id="verifyNote" hidden><br><br>
+      <b>關於③的結果：</b>「只在導覽列」代表該頁的關鍵字命中數沒有超過同站基準線頁的命中數，
+      也就是那些字很可能只出現在全站共用的選單裡。這是<b>精確度</b>工具——
+      它只能從 Google 給的清單裡剔除假命中，<b>不會、也不可能告訴你有沒有漏掉什麼</b>。
+      <span id="unknownNote"></span>
+    </span>
   </footer>
 
 </div>
@@ -106,12 +173,22 @@
   // ---------------------------------------------------------------- 設定
 
   var JINA_PROXY = 'https://r.jina.ai/';
-  var TARGETS = [];          // 從 sites.json 載入後填入 domain 清單
-  var SITES = [];            // 從 sites.json 載入
+  var SITES = [];            // 從 sites.json 載入，再被 localStorage 覆蓋
   var BASELINE_PROBE = '';   // 從 sites.json 載入
   var REQUEST_DELAY_MS = 400; // 每次 fetch 之間的禮貌延遲（對 Jina，不是對目標站）
 
+  // **跟 eu_monitor 用同一個 key**，而且兩頁同源
+  // （https://liucheweiwill-dev.github.io，路徑不影響同源判定，2026-09-23 實測確認）。
+  // 所以在哪一頁改關鍵字，另一頁都會跟著變——不會發生「用 A 組關鍵字搜尋、
+  // 用 B 組關鍵字驗證」這種對不起來的狀況。改 key 之前先想清楚這件事。
+  var STORE_KEY = 'eu-nato-monitor-v2';
+  var qdr = 'w';
+
   var els = {
+    seg: document.getElementById('seg'),
+    go: document.getElementById('go'),
+    warn: document.getElementById('warn'),
+    sitesBox: document.getElementById('sites'),
     input: document.getElementById('input'),
     paste: document.getElementById('paste'),
     run: document.getElementById('run'),
@@ -120,7 +197,7 @@
     progress: document.getElementById('progress'),
     tally: document.getElementById('tally'),
     results: document.getElementById('results'),
-    footer: document.getElementById('footer'),
+    verifyNote: document.getElementById('verifyNote'),
     unknownNote: document.getElementById('unknownNote'),
   };
 
@@ -212,6 +289,101 @@
       }
     } catch (e) { /* 不是合法網址，原樣放回去交給外層判斷 */ }
     return u;
+  }
+
+  // ---------------------------------------------------------------- ① 搜尋
+
+  // localStorage 一律包 try/catch：這份程式也可能被當本機 file:// 開，
+  // Chrome 對 file:// 的 localStorage 支援不穩，沒包會直接拋例外讓整頁失效。
+  // （eu_monitor CLAUDE.md 的第一條約束，同樣適用這裡。）
+  function loadStore() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return;
+      var saved = JSON.parse(raw);
+      SITES.forEach(function (s) {
+        if (saved[s.domain] != null) s.kw = saved[s.domain];
+      });
+      if (saved.__qdr) qdr = saved.__qdr;
+    } catch (e) { /* 忽略即可 */ }
+  }
+
+  function saveStore() {
+    try {
+      var out = { __qdr: qdr };
+      SITES.forEach(function (s) { out[s.domain] = s.kw; });
+      localStorage.setItem(STORE_KEY, JSON.stringify(out));
+    } catch (e) { /* 同上 */ }
+  }
+
+  // 契約跟 eu_monitor 的 buildQuery 一字不差，見 AGENT_BRIEF §4：
+  //   "Taiwan;China"   → site:x (Taiwan OR China)
+  //   "Taiwan"         → site:x Taiwan          （單一關鍵字不加括號）
+  //   " ; ; "          → site:x                 （全空 → 純 site: 查詢）
+  // **全空退化成純 site: 是刻意的功能，不是邊界情況**——配上時間篩選就是
+  // 「這站這段期間所有新東西」，要全掃時就靠它。不要「修」掉。
+  function buildQuery(site) {
+    var words = site.kw.split(';')
+      .map(function (k) { return k.trim(); })
+      .filter(function (k) { return k.length > 0; })
+      .map(function (k) { return /\s|-/.test(k) ? '"' + k + '"' : k; });
+    var q = 'site:' + site.domain;
+    if (words.length === 1) q += ' ' + words[0];
+    else if (words.length > 1) q += ' (' + words.join(' OR ') + ')';
+    return q;
+  }
+
+  function buildUrl(site) {
+    return 'https://www.google.com/search?q=' +
+      encodeURIComponent(buildQuery(site)) + '&tbs=qdr:' + qdr;
+  }
+
+  // 一律用 textContent / createElement，不要用 innerHTML 寫入使用者輸入的關鍵字。
+  function renderSites() {
+    els.sitesBox.textContent = '';
+    SITES.forEach(function (site, i) {
+      var box = document.createElement('div');
+      box.className = 'site';
+
+      var h = document.createElement('h3');
+      var a = document.createElement('a');
+      a.href = buildUrl(site);
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = site.name || site.domain;
+      a.id = 'link-' + i;
+      h.appendChild(a);
+      box.appendChild(h);
+
+      var ta = document.createElement('textarea');
+      ta.value = site.kw;
+      ta.spellcheck = false;
+      ta.setAttribute('aria-label', site.domain + ' 關鍵字，用分號分隔');
+      box.appendChild(ta);
+
+      var pre = document.createElement('div');
+      pre.className = 'q';
+      pre.textContent = buildQuery(site);
+      box.appendChild(pre);
+
+      // 編輯關鍵字時，搜尋網址與驗證用的 site.kw 是同一份資料，
+      // 不可能出現「搜尋一組、驗證另一組」。
+      ta.addEventListener('input', function () {
+        site.kw = ta.value;
+        a.href = buildUrl(site);
+        pre.textContent = buildQuery(site);
+        saveStore();
+      });
+
+      els.sitesBox.appendChild(box);
+    });
+  }
+
+  function refreshLinks() {
+    SITES.forEach(function (site, i) {
+      var a = document.getElementById('link-' + i);
+      if (a) a.href = buildUrl(site);
+    });
   }
 
   // ---------------------------------------------------------------- 抓取（經 Jina）
@@ -333,7 +505,7 @@
         return '<article>' + linkOf(r) + '<div class="why">' + escapeHtml(r.reason || '') + '</div></article>';
       });
 
-    els.footer.hidden = false;
+    els.verifyNote.hidden = false;
     els.unknownNote.textContent = unknown.length
       ? '本次有 ' + unknown.length + ' 筆無法檢查，那幾筆既不是命中也不是未命中，請自己開來看。'
       : '';
@@ -347,13 +519,18 @@
     var cfg = await res.json();
     SITES = cfg.sites;
     BASELINE_PROBE = cfg.baselineProbePath;
+    loadStore();          // 使用者存過的關鍵字會蓋掉 sites.json 的預設值
+    renderSites();
+    Array.prototype.forEach.call(els.seg.querySelectorAll('button'), function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-qdr') === qdr));
+    });
   }
 
   async function run() {
     els.run.disabled = true;
     els.results.innerHTML = '';
     els.tally.hidden = true;
-    els.footer.hidden = true;
+    els.verifyNote.hidden = true;
     els.progress.hidden = false;
     els.progress.textContent = '';
     baselineCache = {};
@@ -396,6 +573,32 @@
 
   // ---------------------------------------------------------------- 事件
 
+  els.seg.addEventListener('click', function (e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    qdr = btn.getAttribute('data-qdr');
+    Array.prototype.forEach.call(this.querySelectorAll('button'), function (b) {
+      b.setAttribute('aria-pressed', String(b === btn));
+    });
+    refreshLinks();   // 只換 href，不重繪整塊，免得把正在編輯的 textarea 洗掉
+    saveStore();
+  });
+
+  els.go.addEventListener('click', function () {
+    if (SITES.length === 0) {
+      els.status.textContent = '⚠ 設定檔還沒載入完成，稍等一下再按。';
+      return;
+    }
+    // 瀏覽器可能擋掉第 2、3 個分頁。擋掉時要講出來，並保留下面三個
+    // 可獨立點擊的連結當退路——沒有提示的話使用者會以為工具壞了。
+    var blocked = 0;
+    SITES.forEach(function (site) {
+      var w = window.open(buildUrl(site), '_blank', 'noopener');
+      if (!w) blocked++;
+    });
+    els.warn.style.display = blocked ? 'block' : 'none';
+  });
+
   els.paste.addEventListener('click', function () {
     if (!navigator.clipboard || !navigator.clipboard.readText) {
       els.status.textContent = '這個瀏覽器不支援自動讀取剪貼簿，請手動貼上（Ctrl+V）。';
@@ -413,7 +616,7 @@
     els.input.value = '';
     els.results.innerHTML = '';
     els.tally.hidden = true;
-    els.footer.hidden = true;
+    els.verifyNote.hidden = true;
     els.progress.hidden = true;
     els.status.textContent = '';
   });
