@@ -3,11 +3,19 @@ name: 比對搜尋結果
 # 兩種觸發方式，做同一件事：
 #   1. workflow_dispatch —— 在 Actions 分頁手動貼網址、按 Run workflow。
 #      GitHub 本身就只允許有 repo 寫入權限的人觸發這個，不用再另外檢查。
-#   2. issues（opened／edited／labeled）—— 用 .github/ISSUE_TEMPLATE/
+#   2. issues（opened／edited）—— 用 .github/ISSUE_TEMPLATE/
 #      verify-request.yml 開一個 issue，貼網址進去。這個是公開 repo，
 #      任何登入的人都能開 issue，所以底下用 job 層級的 if 限定「開 issue
 #      的人是 repo owner」＋「issue 有 verify-request 標籤」兩個條件都要
 #      成立才會真的跑——否則任何人都能對這個 repo 的 Actions 額度搞事。
+#
+#      刻意不含 labeled：用表單開 issue 時，GitHub 會在建立當下就把
+#      verify-request 標籤帶上，opened 事件本身就已經看得到這個標籤，
+#      不需要另外監聽 labeled。2026-09-23 實測過會含 labeled 的版本：
+#      用 API 帶標籤建立 issue 會讓 opened／labeled 幾乎同時各發一次事件，
+#      兩次執行都各自 checkout 到事件觸發當下釘住的舊 commit（見下面
+#      checkout 那步的註解），第二次 push 時才發現落後，被拒絕。
+#      拿掉 labeled 讓這個重複觸發的路徑不會再發生。
 #
 # 抓取的目標網域已經被 extract.js／verify.js 鎖死在 eeas／consilium／
 # nato.int 三站（見 sites.json），不管輸入是誰貼的，能被拿去 fetch 的
@@ -21,7 +29,7 @@ on:
         required: true
         type: string
   issues:
-    types: [opened, edited, labeled]
+    types: [opened, edited]
 
 permissions:
   contents: write
@@ -42,11 +50,22 @@ jobs:
       )
     runs-on: ubuntu-latest
     steps:
+      # 明確指定 ref: main，不要用 actions/checkout 的預設行為。
+      # 預設會 checkout 觸發事件當下釘住的那個 commit，不是執行當下 main
+      # 的最新狀態。當兩個事件在短時間內先後觸發（2026-09-23 實測過），
+      # 兩次執行各自 checkout 到同一個舊 commit，先跑完的那次能正常
+      # push，後跑完的那次因為本地分支落後於遠端而被拒絕。
+      # 指定 ref: main 讓每次執行都從「真正執行當下」的 main 開始，
+      # 而不是從「事件觸發當下」的 main 開始——配上上面的 concurrency
+      # 群組（讓執行序列化，不會真的同時跑），這樣後面排隊的那次執行
+      # 就能看到前一次已經 push 的內容。
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 'lts/*'
 
       # 這兩個值可能含有使用者貼的任意文字（issue 內文）。
       # 一律經由 env 傳遞，不要直接內插進 run: 的腳本字串裡——
