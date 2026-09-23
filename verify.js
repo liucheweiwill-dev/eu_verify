@@ -353,8 +353,10 @@ async function main() {
   const argv = process.argv.slice(2);
   let input = 'urls.txt';
   let output = 'search_result.html';
+  let summaryJsonPath = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '-o') output = argv[++i];
+    else if (argv[i] === '--summary-json') summaryJsonPath = argv[++i];
     else input = argv[i];
   }
 
@@ -399,6 +401,18 @@ async function main() {
               '　只在導覽列 ' + n('chrome') +
               '　無法檢查 ' + n('unknown'));
   console.log('已寫出：' + path.resolve(output));
+
+  // 給 CI 用的機器可讀摘要，不用去解析上面那行人看的文字。
+  // 不含網址／標題等內容——那些已經在 HTML 報告裡，這裡只給數字。
+  if (summaryJsonPath) {
+    fs.writeFileSync(summaryJsonPath, JSON.stringify({
+      total: urls.length,
+      confirmed: n('confirmed'),
+      chrome: n('chrome'),
+      unknown: n('unknown'),
+      generatedAt: meta.generatedAt,
+    }, null, 2), 'utf8');
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

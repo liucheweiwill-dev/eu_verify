@@ -5,3 +5,8 @@ search_result.html
 # 每次執行產生的當日清單與暫存檔
 urls.today.txt
 .euv_*
+
+# GitHub Actions 執行時的中間檔（真正的產出是 latest-report.html，那個要進版控）
+raw-input.txt
+extracted-urls.txt
+summary.json

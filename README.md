@@ -7,17 +7,19 @@ eu_monitor 是單檔、零依賴、零建置的啟動器，它的價值就在於
 這隻工具壞掉時不應該影響你每天按的那顆鈕。
 （eu_monitor 的 `docs/AGENT_BRIEF.md` §7 就是這樣規定的。）
 
-## 兩種跑法，同一套判定邏輯
+## 三種跑法，同一套判定邏輯
 
-| | 本機版（`run.cmd`） | 網頁版（`index.html`） |
-|---|---|---|
-| 要裝什麼 | Node.js 18+ | 不用裝任何東西，開網址就能用 |
-| 抓取方式 | 直接對目標站發請求 | 經第三方服務 [r.jina.ai](https://r.jina.ai) 中轉 |
-| 依賴第三方 | 不用 | **要**——見下面「網頁版怎麼運作」 |
-| 適合誰 | 這台電腦、能裝軟體 | 電腦不能裝軟體，或想分享給別人用 |
+| | 本機版（`run.cmd`） | 網頁版（`index.html`） | GitHub Actions 版 |
+|---|---|---|---|
+| 要裝什麼 | Node.js 18+ | 不用裝任何東西 | 不用裝任何東西 |
+| 觸發方式 | 雙擊 | 貼上、按鈕 | 開一個 GitHub issue，或在 Actions 分頁手動觸發 |
+| 抓取方式 | 直接對目標站發請求 | 經第三方 [r.jina.ai](https://r.jina.ai) 中轉 | 直接對目標站發請求（GitHub 的伺服器，不受瀏覽器 CORS 限制） |
+| 依賴第三方 | 不用 | **要** | 不用 |
+| 結果在哪 | 開啟本機 `search_result.html` | 直接畫在同一頁 | 回覆在 issue 底下，另存一份 `latest-report.html` |
+| 適合誰 | 這台電腦、能裝軟體 | 想要當場看結果 | 完全不能裝軟體、或想用手機／別人的電腦觸發 |
 
-判定邏輯（跟該站基準線相減）與站台設定（`sites.json`）兩邊共用，
-不是各寫一套——這點很重要，不然兩邊會漸漸分歧、結果對不上。
+判定邏輯（跟該站基準線相減）與站台設定（`sites.json`）三邊共用，
+不是各寫一套——這點很重要，不然會漸漸分歧、結果對不上。
 
 ## 它做什麼
 
@@ -134,6 +136,54 @@ Node 腳本不受這條規則限制——CORS 管的是瀏覽器，不是「網�
 Jina 用的是真的無頭瀏覽器抓頁面，理論上有機會騙過那個「JS 指紋挑戰」，
 但實測沒有——回來的還是同一頁 `Browser check - Consilium`。跟本機版行為一致，
 不算新的限制。
+
+## GitHub Actions 版：完全不用裝軟體，也不經第三方
+
+抓取邏輯直接重用 `verify.js`／`extract.js`，只是跑在 GitHub 的伺服器上而不是
+你的電腦或瀏覽器——所以**沒有 CORS 問題**（CORS 是瀏覽器的規則，伺服器對伺服器
+的請求不受它限制），也**不用經過 Jina 或任何第三方**。代價是觸發方式變成
+「開一個 GitHub issue」，需要登入 GitHub 帳號。
+
+```
+① 在 eu_monitor 按「開啟三個分頁」
+② 在三個 Google 分頁上各按一次書籤 → 自動複製到剪貼簿
+③ 到 https://github.com/liucheweiwill-dev/eu_verify/issues/new/choose
+   選「比對一批網址」，貼上（Ctrl+V），送出
+④ 幾分鐘內機器人會在那則 issue 底下留言回報結果，附完整報告的連結
+```
+
+完整報告固定寫在 `latest-report.html`，網址永遠是
+<https://liucheweiwill-dev.github.io/eu_verify/latest-report.html>——
+每次執行都會覆蓋掉上一次的內容。要找更早的紀錄，
+去[這個檔案的 commit 歷史](https://github.com/liucheweiwill-dev/eu_verify/commits/main/latest-report.html)，
+每次執行都留了一筆 commit。
+
+### 誰能觸發
+
+**只有 repo 擁有者能觸發**，即使 repo 是公開的。這是刻意設的：
+`issues` 事件在公開 repo 上任何登入的人都能發動，所以 workflow 裡用
+`if:` 卡了兩個條件——開 issue 的人必須是 repo 擁有者，issue 也必須帶有
+`verify-request` 標籤（用上面那個 issue 表單開就會自動帶，不用自己加）。
+兩個條件都成立才會真的跑，否則任何人都能對你的 Actions 額度亂觸發。
+
+`workflow_dispatch`（Actions 分頁那顆手動觸發鈕）本來就只有對這個 repo
+有寫入權限的人才看得到、按得動，不用額外檢查。
+
+即使真的被誤觸發，能被抓取的網址範圍還是鎖死在 `sites.json` 列的三個
+網域——`extract.js` 的網域白名單在所有三種跑法裡是同一份，issue 內文
+塞了什麼都跑不出這個範圍。
+
+### 這裡也有一個容易踩到的坑，已經先避開了
+
+Issue 內文是任何登入使用者都能打的自由文字。如果 workflow 的腳本直接把
+`${{ github.event.issue.body }}` 內插進 `run:` 的 shell 指令字串裡，
+內文只要含一個反引號或分號，就能在 GitHub 的 runner 上跑任意指令——
+這是 GitHub Actions 最常見的注入手法之一，不是理論風險。
+
+這裡的做法是把 issue 內文整段經由 `env:` 傳進去，腳本裡只用
+`"$ISSUE_BODY"` 這種變數展開讀它，不會被當成指令的一部分解析。
+已經實測驗證：貼一段刻意包含反引號、分號、`$()`、破壞引號的內文進去，
+沒有任何指令被執行，內容原封不動被當成純文字寫進檔案。
 
 ## 抓到 0 筆時會停下來，不會裝作沒事
 

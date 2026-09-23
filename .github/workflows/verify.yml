@@ -1,0 +1,120 @@
+name: 比對搜尋結果
+
+# 兩種觸發方式，做同一件事：
+#   1. workflow_dispatch —— 在 Actions 分頁手動貼網址、按 Run workflow。
+#      GitHub 本身就只允許有 repo 寫入權限的人觸發這個，不用再另外檢查。
+#   2. issues（opened／edited／labeled）—— 用 .github/ISSUE_TEMPLATE/
+#      verify-request.yml 開一個 issue，貼網址進去。這個是公開 repo，
+#      任何登入的人都能開 issue，所以底下用 job 層級的 if 限定「開 issue
+#      的人是 repo owner」＋「issue 有 verify-request 標籤」兩個條件都要
+#      成立才會真的跑——否則任何人都能對這個 repo 的 Actions 額度搞事。
+#
+# 抓取的目標網域已經被 extract.js／verify.js 鎖死在 eeas／consilium／
+# nato.int 三站（見 sites.json），不管輸入是誰貼的，能被拿去 fetch 的
+# 網址範圍不會超出這三個站。
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: '網址清單（一行一個，或整段貼上也可以）'
+        required: true
+        type: string
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: eu-verify-report
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issues' &&
+        github.event.issue.user.login == github.repository_owner &&
+        contains(github.event.issue.labels.*.name, 'verify-request')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 這兩個值可能含有使用者貼的任意文字（issue 內文）。
+      # 一律經由 env 傳遞，不要直接內插進 run: 的腳本字串裡——
+      # 那樣做的話，issue 內文只要含有一個反引號或分號，就能在這個
+      # runner 上跑任意指令。這不是理論風險，是 GitHub Actions 最常見
+      # 的注入手法之一。
+      - name: 準備輸入
+        env:
+          DISPATCH_URLS: ${{ github.event.inputs.urls }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            printf '%s' "$DISPATCH_URLS" > raw-input.txt
+          else
+            printf '%s' "$ISSUE_BODY" > raw-input.txt
+          fi
+
+      - name: 抽取目標站網址
+        id: extract
+        run: |
+          set +e
+          node extract.js --text raw-input.txt > extracted-urls.txt
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+
+      # 抓到 0 筆是錯誤，不是「今天沒有新東西」——理由跟本機版、網頁版
+      # 完全一樣，見 README「抓到 0 筆時會停下來，不會裝作沒事」。
+      - name: 沒抓到網址就通知並停止
+        if: steps.extract.outputs.exit != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            gh issue comment "${{ github.event.issue.number }}" --body \
+              $'⚠ 沒有在這則 issue 裡找到任何目標站（eeas／consilium／nato）的網址，沒有執行比對。\n\n這不代表「沒有新東西」，只代表這次沒讀到網址——請確認貼的內容裡真的有結果連結。'
+          fi
+          echo "::error::沒有抓到任何目標站網址，中止。"
+          exit 1
+
+      - name: 執行比對
+        run: node verify.js extracted-urls.txt -o latest-report.html --summary-json summary.json
+
+      - name: 認可報告
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest-report.html
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "Update latest-report.html"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 留言回報
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CONFIRMED=$(node -p "require('./summary.json').confirmed")
+          CHROME=$(node -p "require('./summary.json').chrome")
+          UNKNOWN=$(node -p "require('./summary.json').unknown")
+          gh issue comment "${{ github.event.issue.number }}" --body "$(cat <<BODY
+          正文確認 ${CONFIRMED}　只在導覽列 ${CHROME}　無法檢查 ${UNKNOWN}
+
+          完整報告：https://liucheweiwill-dev.github.io/eu_verify/latest-report.html
+
+          （這個連結永遠指向最新一次結果。找舊紀錄：https://github.com/liucheweiwill-dev/eu_verify/commits/main/latest-report.html）
+          BODY
+          )"

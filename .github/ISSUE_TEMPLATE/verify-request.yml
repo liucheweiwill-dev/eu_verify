@@ -1,0 +1,20 @@
+name: 比對一批網址
+description: 貼上從 eu_monitor 書籤複製出來的網址清單，由 GitHub Actions 執行比對，結果會回覆在這個 issue 底下。
+title: "[verify] "
+labels: ["verify-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        用 eu_monitor 的書籤在三個 Google 分頁上各按一次、複製，直接貼進下面這格就好。
+        提交後幾分鐘內會有機器人在這則 issue 下面留言回報結果。
+  - type: textarea
+    id: urls
+    attributes:
+      label: 網址清單
+      description: 一行一個，或整段貼上也可以——程式會自己從裡面挑出 eeas／consilium／nato 的網址。
+      placeholder: |
+        https://www.eeas.europa.eu/...
+        https://www.nato.int/...
+    validations:
+      required: true
