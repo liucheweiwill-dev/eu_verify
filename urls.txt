@@ -1,7 +1,10 @@
 # 一行一個網址，# 開頭的行會被忽略。
 # 下面這幾筆是測試案例，正確答案已知（見 README.md）。
+# 用現在的關鍵字跑，應為「正文確認 4　找不到關鍵字 3　無法檢查 1　只在導覽列 0」。
 
-# 預期「只在導覽列」——正文完全沒提印太，是使用者 2026-09-22 回報的那頁
+# 預期「找不到關鍵字」——正文完全沒提印太，是使用者 2026-09-22 回報的那頁。
+# 9/22 換關鍵字以前它是「只在導覽列」的案例（舊的 Taiwan／Indo-Pacific 只出現在導覽列）；
+# 換成片語之後，整頁一個關鍵字都沒有。
 https://www.eeas.europa.eu/eeas/opening-remarks-un-side-event-humanitarian-diplomacy-safeguards-international-humanitarian-law_en
 
 # 預期「正文確認」——EEAS 的印太主題頁
@@ -10,8 +13,24 @@ https://www.eeas.europa.eu/eu-indo-pacific-strategy-topic_en
 # 預期「正文確認」——NATO 印太夥伴關係頁
 https://www.nato.int/en/what-we-do/partnerships-and-cooperation/relations-with-partners-in-the-indo-pacific-region
 
-# 預期「只在導覽列」——北約創始條約，跟中國印太無關
+# 預期「找不到關鍵字」——北約創始條約，跟中國印太無關
 https://www.nato.int/en/about-us/organization/founding-treaty
+
+# 預期「正文確認」（NATO、drone）——寫到「NATO jets」「drone strikes」
+https://www.eeas.europa.eu/delegations/council-europe/eu-statement-ukraine-3_en?s=51
+
+# 預期「找不到關鍵字」——頁面只有「Coordinator」，裡面的 nato 不能算 NATO。
+# 2026-09-24 以前的子字串比對會把它誤判成正文確認。
+https://www.eeas.europa.eu/eeas/eeas-autumn-school-2026-examine-how-human-rights-shape-eu-foreign-policy_en?s=98
+
+# 預期「正文確認」（cables）——西班牙文頁面，只寫了單數的「cable submarino」。
+# Google 靠詞形變化命中；2026-09-24 以前會被判成「只在導覽列（Google 誤判）」。
+https://www.eeas.europa.eu/node/467549_en?s=98
 
 # 預期「無法檢查」——consilium 對所有自動化客戶端回 403
 https://www.consilium.europa.eu/en/press/press-releases/
+
+# 「只在導覽列」目前沒有現成的案例：現在的關鍵字在兩站導覽列都是 0 次（2026-09-24 實測），
+# 用現在的設定不會出現這一類。要測它，把 verify.js 複製到暫存資料夾，旁邊放一份把 EEAS 的
+# kw 改成 Taiwan;China;Indo-Pacific 的 sites.json，對第一筆（UN 人道法演說）跑——
+# 應為「只在導覽列」（2026-09-24：Taiwan 1/1、China 2/2、Indo-Pacific 1/1）。

@@ -44,7 +44,7 @@
   h2 .n { color:var(--muted); font-weight:400; }
   section.ok h2 { color:var(--ok); }
   section.chrome h2 { color:var(--dim); }
-  section.unknown h2 { color:var(--warn); }
+  section.unknown h2, section.absent h2 { color:var(--warn); }
   article { background:var(--card); border:1px solid var(--line); border-radius:10px;
     padding:12px 14px; margin-bottom:9px; }
   article a { color:var(--accent); text-decoration:none; font-weight:600; }
@@ -180,7 +180,8 @@
 
     <span id="verifyNote" hidden><br><br>
       <b>關於③的結果：</b>「只在導覽列」代表該頁的關鍵字命中數沒有超過同站基準線頁的命中數，
-      也就是那些字很可能只出現在全站共用的選單裡。這是<b>精確度</b>工具——
+      也就是那些字很可能只出現在全站共用的選單裡。「找不到關鍵字」代表抓到的頁面上一個關鍵字都沒有，
+      Google 為什麼回它，工具判斷不了。這是<b>精確度</b>工具——
       它只能從 Google 給的清單裡剔除假命中，<b>不會、也不可能告訴你有沒有漏掉什麼</b>。
       <span id="unknownNote"></span>
     </span>
@@ -263,9 +264,23 @@
     return m ? htmlToText(m[1]).slice(0, 160) : '';
   }
 
+  // 關鍵字怎麼算「出現一次」。規則跟 verify.js 的 keywordPattern 一模一樣，改一邊要改另一邊。
+  // 1. 要從一個字的開頭算起：Coordinator、Senator 裡的 nato 不算 NATO。
+  //    後面可以接別的字母，所以 drone 也算到 drones。
+  // 2. 以 s 結尾的關鍵字也接受單數：cables 也算到 cable（Google 會做這種詞形變化）。
+  //    -ss／-us／-is 結尾、或去掉 s 後不到 4 個字母的不處理（Congress、status、news、arms）。
+  // 為什麼這樣改、實測資料見 README「比對規則」。
+  // 字首判斷刻意不用 lookbehind，舊一點的瀏覽器不支援；多吃掉的那個前導字元不影響計數。
+  function keywordPattern(kw) {
+    var core = kw;
+    var last = kw.split(/\s+/).pop().toLowerCase();
+    if (/[^sui]s$/.test(last) && last.length - 1 >= 4) core = kw.slice(0, -1);
+    var lead = /^[a-z0-9]/i.test(core) ? '(^|[^a-z0-9])' : '';
+    return new RegExp(lead + escapeRegExp(core), 'gi');
+  }
+
   function countKeyword(text, kw) {
-    var re = new RegExp(escapeRegExp(kw), 'gi');
-    var m = text.match(re);
+    var m = text.match(keywordPattern(kw));
     return m ? m.length : 0;
   }
 
@@ -486,7 +501,10 @@
       else if (c > b) out.hits.push({ kw: kw, count: c, baseline: b });
       else out.chromeOnly.push({ kw: kw, count: c, baseline: b });
     });
-    out.state = out.hits.length > 0 ? 'confirmed' : 'chrome';
+    // 三種結果：正文有（超過基準線）、只在導覽列（有出現但沒超過）、找不到（一個都沒有）。
+    // 「找不到」不可以併進「只在導覽列」——那等於說 Google 錯了，但我們其實不知道
+    // Google 是靠什麼命中的（同義詞、詞形變化、其他語言），見 README「比對規則」。
+    out.state = out.hits.length > 0 ? 'confirmed' : out.chromeOnly.length > 0 ? 'chrome' : 'absent';
     return out;
   }
 
@@ -506,21 +524,31 @@
     }).join(' ');
   }
 
+  // 「找不到關鍵字」那一區的說明。verify.js 的報告用同一段話。
+  var ABSENT_NOTE = 'Google 回了這幾頁，但抓到的頁面上一個關鍵字都找不到——不在正文，也不在導覽列。' +
+    'Google 可能是靠同義詞、詞形變化或其他語言命中的，也可能是頁面後來改過；' +
+    '工具判斷不了，所以不能當成 Google 誤判。請看標題決定要不要點開。';
+
   function render(results) {
     var confirmed = results.filter(function (r) { return r.state === 'confirmed'; });
-    var chrome = results.filter(function (r) { return r.state === 'chrome'; });
+    var absent = results.filter(function (r) { return r.state === 'absent'; });
     var unknown = results.filter(function (r) { return r.state === 'unknown'; });
+    var chrome = results.filter(function (r) { return r.state === 'chrome'; });
 
+    // 順序：先正文確認，再兩類要自己看的（找不到關鍵字、無法檢查），
+    // 最後才是可以略過的只在導覽列。
     els.tally.hidden = false;
     els.tally.innerHTML =
       '<div><b>' + confirmed.length + '</b>正文確認</div>' +
-      '<div><b>' + chrome.length + '</b>只在導覽列</div>' +
-      '<div><b>' + unknown.length + '</b>無法檢查</div>';
+      '<div><b>' + absent.length + '</b>找不到關鍵字</div>' +
+      '<div><b>' + unknown.length + '</b>無法檢查</div>' +
+      '<div><b>' + chrome.length + '</b>只在導覽列</div>';
 
-    function section(title, cls, rows, bodyFn) {
+    function section(title, cls, rows, bodyFn, note) {
       if (rows.length === 0) return '';
       return '<section class="' + cls + '"><h2>' + escapeHtml(title) +
         ' <span class="n">' + rows.length + '</span></h2>' +
+        (note ? '<p class="why">' + escapeHtml(note) + '</p>' : '') +
         rows.map(bodyFn).join('') + '</section>';
     }
 
@@ -530,16 +558,23 @@
           (r.chromeOnly.length ? '<div class="kw sub">另有只在導覽列的：' + kwChips(r.chromeOnly, 'dim') + '</div>' : '') +
           '</article>';
       }) +
-      section('只在導覽列命中（Google 誤判）', 'chrome', chrome, function (r) {
-        return '<article>' + linkOf(r) + '<div class="kw">' + kwChips(r.chromeOnly, 'dim') + '</div></article>';
-      }) +
+      section('找不到關鍵字（要自己看）', 'absent', absent, function (r) {
+        return '<article>' + linkOf(r) + '</article>';
+      }, ABSENT_NOTE) +
       section('無法檢查', 'unknown', unknown, function (r) {
         return '<article>' + linkOf(r) + '<div class="why">' + escapeHtml(r.reason || '') + '</div></article>';
+      }) +
+      section('只在導覽列命中（Google 誤判）', 'chrome', chrome, function (r) {
+        return '<article>' + linkOf(r) + '<div class="kw">' + kwChips(r.chromeOnly, 'dim') + '</div></article>';
       });
 
     els.verifyNote.hidden = false;
-    els.unknownNote.textContent = unknown.length
-      ? '本次有 ' + unknown.length + ' 筆無法檢查，那幾筆既不是命中也不是未命中，請自己開來看。'
+    var needLook = [
+      absent.length ? absent.length + ' 筆找不到關鍵字' : '',
+      unknown.length ? unknown.length + ' 筆無法檢查' : '',
+    ].filter(Boolean).join('、');
+    els.unknownNote.textContent = needLook
+      ? '本次有 ' + needLook + '，那幾筆既不是命中也不是未命中，請自己看。'
       : '';
 
     lastResults = results;
@@ -648,8 +683,9 @@
   // 不附上的話，別人會以為這就是全部。
   function buildConfirmedList(results) {
     var confirmed = results.filter(function (r) { return r.state === 'confirmed'; });
-    var chrome = results.filter(function (r) { return r.state === 'chrome'; }).length;
+    var absent = results.filter(function (r) { return r.state === 'absent'; }).length;
     var unknown = results.filter(function (r) { return r.state === 'unknown'; }).length;
+    var chrome = results.filter(function (r) { return r.state === 'chrome'; }).length;
     var ranges = {};
     Object.keys(lastLogs).forEach(function (k) { if (lastLogs[k].r) ranges[lastLogs[k].r] = 1; });
     var rs = Object.keys(ranges).map(function (r) { return QDR_LABEL[r] || r; });
@@ -661,7 +697,8 @@
       out.push('   命中：' + r.hits.map(function (h) { return h.kw + ' ×' + h.count; }).join('、'));
     });
     out.push('');
-    out.push('—— 未列入：只在導覽列 ' + chrome + ' 筆、無法檢查 ' + unknown + ' 筆（無法檢查的不代表沒有命中）。');
+    out.push('—— 未列入：找不到關鍵字 ' + absent + ' 筆、無法檢查 ' + unknown + ' 筆（這兩類要自己看，不代表沒有命中）、' +
+      '只在導覽列 ' + chrome + ' 筆。');
     out.push('—— 收集狀況：' + lastCoverage.map(function (c) {
       return (c.cls === 'ok' ? '✓' : '⚠') + c.name + ' ' + c.text;
     }).join('；'));
@@ -730,6 +767,7 @@
       results.push(r);
       var mark = r.state === 'confirmed' ? '正文命中'
         : r.state === 'chrome' ? '只在導覽列'
+        : r.state === 'absent' ? '找不到關鍵字'
         : '無法檢查 — ' + r.reason;
       els.progress.textContent += '    → ' + mark + '\n';
       els.progress.scrollTop = els.progress.scrollHeight;

@@ -79,9 +79,25 @@ function extractTitle(html) {
   return m ? htmlToText(m[1]).slice(0, 160) : '';
 }
 
+// 關鍵字怎麼算「出現一次」。index.html 有一份一模一樣的規則，改一邊要改另一邊。
+// 1. 要從一個字的開頭算起：Coordinator、Senator 裡的 nato 不算 NATO。
+//    後面可以接別的字母，所以 drone 也算到 drones。
+// 2. 以 s 結尾的關鍵字也接受單數：cables 也算到 cable。Google 會做這種詞形
+//    變化，我們不做的話，Google 靠單數命中的頁面會落到「找不到關鍵字」。
+//    -ss／-us／-is 結尾、或去掉 s 後不到 4 個字母的不處理，免得 Congress、
+//    status、news、arms 被砍成別的字。
+// 2026-09-24 用使用者真實的 17 筆 EEAS 結果查出這兩條，見 README「比對規則」。
+// 字首判斷刻意不用 lookbehind，舊一點的瀏覽器不支援；多吃掉的那個前導字元不影響計數。
+function keywordPattern(kw) {
+  let core = kw;
+  const last = kw.split(/\s+/).pop().toLowerCase();
+  if (/[^sui]s$/.test(last) && last.length - 1 >= 4) core = kw.slice(0, -1);
+  const lead = /^[a-z0-9]/i.test(core) ? '(^|[^a-z0-9])' : '';
+  return new RegExp(lead + escapeRegExp(core), 'gi');
+}
+
 function countKeyword(text, kw) {
-  const re = new RegExp(escapeRegExp(kw), 'gi');
-  const m = text.match(re);
+  const m = text.match(keywordPattern(kw));
   return m ? m.length : 0;
 }
 
@@ -220,7 +236,10 @@ async function checkUrl(rawUrl) {
     else out.chromeOnly.push({ kw, count: c, baseline: b });
   }
 
-  out.state = out.hits.length > 0 ? 'confirmed' : 'chrome';
+  // 三種結果：正文有（超過基準線）、只在導覽列（有出現但沒超過）、找不到（一個都沒有）。
+  // 「找不到」不可以併進「只在導覽列」——那等於說 Google 錯了，但我們其實不知道
+  // Google 是靠什麼命中的（同義詞、詞形變化、其他語言），見 README「比對規則」。
+  out.state = out.hits.length > 0 ? 'confirmed' : out.chromeOnly.length > 0 ? 'chrome' : 'absent';
   return out;
 }
 
@@ -279,15 +298,22 @@ function computeCoverage(urls, logs) {
   });
 }
 
+// 「找不到關鍵字」那一區的說明。index.html 用同一段話。
+const ABSENT_NOTE = 'Google 回了這幾頁，但抓到的頁面上一個關鍵字都找不到——不在正文，也不在導覽列。' +
+  'Google 可能是靠同義詞、詞形變化或其他語言命中的，也可能是頁面後來改過；' +
+  '工具判斷不了，所以不能當成 Google 誤判。請看標題決定要不要點開。';
+
 function renderHtml(results, meta) {
   const confirmed = results.filter((r) => r.state === 'confirmed');
-  const chrome = results.filter((r) => r.state === 'chrome');
+  const absent = results.filter((r) => r.state === 'absent');
   const unknown = results.filter((r) => r.state === 'unknown');
+  const chrome = results.filter((r) => r.state === 'chrome');
 
-  const section = (title, cls, rows, bodyFn) => {
+  const section = (title, cls, rows, bodyFn, note) => {
     if (rows.length === 0) return '';
     return '<section class="' + cls + '">\n<h2>' + escapeHtml(title) +
       ' <span class="n">' + rows.length + '</span></h2>\n' +
+      (note ? '<p class="why">' + escapeHtml(note) + '</p>\n' : '') +
       rows.map(bodyFn).join('\n') + '\n</section>';
   };
 
@@ -302,6 +328,8 @@ function renderHtml(results, meta) {
     '<span class="chip ' + cls + '">' + escapeHtml(h.kw) +
     ' <b>' + h.count + '</b><i>／導覽列 ' + h.baseline + '</i></span>').join(' ');
 
+  // 順序：先正文確認，再兩類要自己看的（找不到關鍵字、無法檢查），
+  // 最後才是可以略過的只在導覽列。
   const body =
     section('正文確認命中', 'ok', confirmed, (r) =>
       '<article>' + linkOf(r) +
@@ -311,15 +339,23 @@ function renderHtml(results, meta) {
         : '') +
       '</article>') +
 
-    section('只在導覽列命中（Google 誤判）', 'chrome', chrome, (r) =>
-      '<article>' + linkOf(r) +
-      '<div class="kw">' + kwChips(r.chromeOnly, 'dim') + '</div>' +
-      '</article>') +
+    section('找不到關鍵字（要自己看）', 'absent', absent, (r) =>
+      '<article>' + linkOf(r) + '</article>', ABSENT_NOTE) +
 
     section('無法檢查', 'unknown', unknown, (r) =>
       '<article>' + linkOf(r) +
       '<div class="why">' + escapeHtml(r.reason || '') + '</div>' +
+      '</article>') +
+
+    section('只在導覽列命中（Google 誤判）', 'chrome', chrome, (r) =>
+      '<article>' + linkOf(r) +
+      '<div class="kw">' + kwChips(r.chromeOnly, 'dim') + '</div>' +
       '</article>');
+
+  const needLook = [
+    absent.length ? '<b>' + absent.length + '</b> 筆找不到關鍵字' : '',
+    unknown.length ? '<b>' + unknown.length + '</b> 筆無法檢查' : '',
+  ].filter(Boolean).join('、');
 
   const softWarn = [...baselineCache.entries()]
     .filter(([, b]) => b.available && b.softNotFound)
@@ -354,7 +390,7 @@ function renderHtml(results, meta) {
   h2 .n { color:var(--muted); font-weight:400; }
   section.ok h2 { color:var(--ok); }
   section.chrome h2 { color:var(--dim); }
-  section.unknown h2 { color:var(--warn); }
+  section.unknown h2, section.absent h2 { color:var(--warn); }
   article { background:var(--card); border:1px solid var(--line); border-radius:10px;
     padding:12px 14px; margin-bottom:9px; }
   article a { color:var(--accent); text-decoration:none; font-weight:600; }
@@ -387,17 +423,19 @@ function renderHtml(results, meta) {
 
   <div class="tally">
     <div><b>${confirmed.length}</b>正文確認</div>
-    <div><b>${chrome.length}</b>只在導覽列</div>
+    <div><b>${absent.length}</b>找不到關鍵字</div>
     <div><b>${unknown.length}</b>無法檢查</div>
+    <div><b>${chrome.length}</b>只在導覽列</div>
   </div>
 
 ${body || '<p class="sub">沒有輸入任何網址。</p>'}
 
   <footer>
     <b>判讀提醒：</b>「只在導覽列」代表該頁的關鍵字命中數沒有超過同站 404 頁的命中數，
-    也就是那些字很可能只出現在全站共用的選單裡。這是<b>精確度</b>工具——
+    也就是那些字很可能只出現在全站共用的選單裡。「找不到關鍵字」代表抓到的頁面上一個關鍵字都沒有，
+    Google 為什麼回它，工具判斷不了。這是<b>精確度</b>工具——
     它只能從 Google 給的清單裡剔除假命中，<b>不會、也不可能告訴你有沒有漏掉什麼</b>。
-    ${unknown.length ? '<br>本次有 <b>' + unknown.length + '</b> 筆無法檢查，那幾筆<b>既不是命中也不是未命中</b>，請自己開來看。' : ''}
+    ${needLook ? '<br>本次有 ' + needLook + '，那幾筆<b>既不是命中也不是未命中</b>，請自己看。' : ''}
     ${softWarn.length ? '<br><b>警告：</b>' + escapeHtml(softWarn.join('、')) + ' 的 404 探測回了 200，對照基準線可能被灌水，判定會偏嚴（可能誤殺真命中）。' : ''}
   </footer>
 </div>
@@ -454,7 +492,9 @@ async function main() {
     results.push(r);
     const mark = r.state === 'confirmed'
       ? '正文命中 (' + r.hits.map((h) => h.kw).join(', ') + ')'
-      : r.state === 'chrome' ? '只在導覽列' : '無法檢查 — ' + r.reason;
+      : r.state === 'chrome' ? '只在導覽列'
+      : r.state === 'absent' ? '找不到關鍵字'
+      : '無法檢查 — ' + r.reason;
     console.log(mark);
   }
 
@@ -468,8 +508,9 @@ async function main() {
 
   const n = (s) => results.filter((r) => r.state === s).length;
   console.log('\n正文確認 ' + n('confirmed') +
-              '　只在導覽列 ' + n('chrome') +
-              '　無法檢查 ' + n('unknown'));
+              '　找不到關鍵字 ' + n('absent') +
+              '　無法檢查 ' + n('unknown') +
+              '　只在導覽列 ' + n('chrome'));
   console.log('已寫出：' + path.resolve(output));
 
   // 給 CI 用的機器可讀摘要，不用去解析上面那行人看的文字。
@@ -478,6 +519,7 @@ async function main() {
     fs.writeFileSync(summaryJsonPath, JSON.stringify({
       total: urls.length,
       confirmed: n('confirmed'),
+      absent: n('absent'),
       chrome: n('chrome'),
       unknown: n('unknown'),
       generatedAt: meta.generatedAt,

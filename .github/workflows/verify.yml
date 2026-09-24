@@ -129,8 +129,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           CONFIRMED=$(node -p "require('./summary.json').confirmed")
+          ABSENT=$(node -p "require('./summary.json').absent")
           CHROME=$(node -p "require('./summary.json').chrome")
           UNKNOWN=$(node -p "require('./summary.json').unknown")
+          NEEDLOOK=$(node -p "var s=require('./summary.json'); (s.absent + s.unknown) ? '找不到關鍵字與無法檢查的那 ' + (s.absent + s.unknown) + ' 筆要自己看，不代表沒有命中。' : ''")
           # 收集狀況的文字有一部分來自 issue 內文裡的 #euv 紀錄行。這裡只做變數展開，
           # 展開後的值不會被 shell 再解析一次，所以內容裡就算有 $() 也不會被執行。
           COVERAGE=$(node -p "require('./summary.json').coverage.map(function(l){return '- '+l}).join('\n')")
@@ -141,7 +143,8 @@ jobs:
           收集狀況：
           ${COVERAGE}
 
-          正文確認 ${CONFIRMED}　只在導覽列 ${CHROME}　無法檢查 ${UNKNOWN}
+          正文確認 ${CONFIRMED}　找不到關鍵字 ${ABSENT}　無法檢查 ${UNKNOWN}　只在導覽列 ${CHROME}
+          ${NEEDLOOK}
 
           完整報告：https://liucheweiwill-dev.github.io/eu_verify/latest-report.html
 
