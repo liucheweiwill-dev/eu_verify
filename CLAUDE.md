@@ -21,7 +21,7 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
   不可以算成沒命中，也不可以默默丟掉。
 - **「找不到關鍵字」≠「Google 誤判」。** 頁面上逐字找不到關鍵字，只代表我們的比對找不到——
   Google 會用同義詞、詞形變化、其他語言命中。這一類要自己看，不可以併進「只在導覽列」。
-  （2026-09-24 就是混在一起，把一篇寫到海底電纜的頁面說成了誤判。）
+  （2026-09-24 用當時的預設關鍵字重跑，一個關鍵字都沒有的 10 筆全被標成「Google 誤判」。）
 - **「不知道」≠「沒問題」。** 收集狀況只有兩種：✓（確定收完）和 ⚠（其他一切）。
   沒有收集紀錄一律 ⚠。不要加一個看起來無害的「中性」狀態。
 - **這是精確度工具，不是召回工具。** 它只能從 Google 給的清單裡剔除假命中，
@@ -33,9 +33,11 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
 | 約束 | 為什麼 |
 |---|---|
 | 判定是「候選頁命中數**超過**同站 404 頁的命中數」，不是直接 grep | 導覽列的字就在每一頁的 HTML 裡，直接 grep 會重犯 Google 的錯 |
-| 關鍵字從字首比對（`keywordPattern`） | 子字串比對會把 Coordinator、Senator 算成 NATO（2026-09-24 實測：7 筆正文確認中 2 筆是這樣來的） |
+| 關鍵字從字首比對（`keywordPattern`） | 子字串比對會把 Coordinator、Senator、discriminatory 算成 NATO（2026-09-24：使用者實際的 9 筆正文確認中 3 筆是這樣來的） |
 | 以 s 結尾的關鍵字也接受單數；`-ss`／`-us`／`-is` 結尾與去掉 s 後太短的不處理 | Google 會做詞形變化，不跟上的話，Google 靠單數命中的頁面會落到「找不到關鍵字」；例外是免得 Congress、status、news 被砍成別的字 |
 | 結果順序：正文確認 → 找不到關鍵字 → 無法檢查 → 只在導覽列 | 要自己看的放在可以略過的前面 |
+| PDF 一律「無法檢查」，理由寫 PDF（`isPdfUrl`，只看網址） | 把 PDF 當 HTML 數，數到的是壓縮過的位元組，會被誤判成「找不到關鍵字」。`data.consilium` 其實沒擋（回 200），不能寫成 403 |
+| 同一份理事會文件的各語言版本合併成一筆（`groupCouncilDocs`），**每個語言的連結都留著** | 一份文件曾一次出現 16 種語言（2026-09-24）。合併是為了不用看 16 次，不是過濾——不可以只留一個連結 |
 | `sites.json` 的 `baselineProbePath` 是固定字串 | 404 頁內容會隨探測路徑微幅變動，換成時間戳會讓基準線每次差 ±1（2026-09-23 實測） |
 | 網頁版③經 r.jina.ai 抓取時帶 `X-Return-Format: html` | 預設的 Markdown 模式會吃掉部分命中，基準線與候選頁就不是同一種比法 |
 | 抓到 0 筆就大聲失敗：`extract.js` exit 1、`run.cmd` 停下且不覆蓋舊清單、Actions 留言後中止 | Google 改版會弄壞擷取；「安靜地少回幾筆」正是 Google Alerts 被否決的原因 |
@@ -56,8 +58,8 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
 |---|---|
 | 站台網域 | `sites.json`、`extract.js` 的 `TARGETS`、`bookmarklet.html` 的 `TARGETS`、eu_monitor `index.html` 的 `SITES` |
 | 預設關鍵字 | `sites.json` ↔ eu_monitor `index.html` 的 `SITES` |
-| 判定邏輯 | `index.html`（網頁版）和 `verify.js`（`run.cmd` 與 Actions 共用）**各有一份實作**（`keywordPattern`、`countKeyword`、`checkUrl`）。`node keyword-test.js` 會檢查兩份的比對結果一致 |
-| 結果分類（目前四類） | `index.html` 的畫面與「複製正文確認清單」、`verify.js` 的報告與 `--summary-json`、`verify.yml` 的留言 |
+| 判定邏輯 | `index.html`（網頁版）和 `verify.js`（`run.cmd` 與 Actions 共用）**各有一份實作**（`keywordPattern`、`countKeyword`、`isPdfUrl`、`councilDocKey`、`groupCouncilDocs`、`checkUrl`）。`node keyword-test.js` 會檢查兩份的結果一致 |
+| 結果分類（目前四類，計數用合併理事會文件後的筆數） | `index.html` 的畫面與「複製正文確認清單」、`verify.js` 的報告與 `--summary-json`、`verify.yml` 的留言 |
 | 收集狀況的 ✓／⚠ 規則 | `index.html`、`verify.js`，以及書籤面板（`bookmarklet.html` 的 `renderSummary`） |
 | `#euv` 收集紀錄格式 | `bookmarklet.html` 產生；`index.html`、`extract.js`、`verify.js` 讀。紀錄行不能含 `http(s)://`，否則會被當成網址擷取 |
 | 書籤版本號 | `bookmarklet.html` 的 `VERSION`、同一頁的按鈕文字與說明、`index.html` ② 的「收集器 v2」提示 |
@@ -66,8 +68,10 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
 
 - **localStorage key `eu-nato-monitor-v2` 與 eu_monitor 共用**（兩頁同源）。在任一頁改關鍵字，兩邊都生效；
   改了 key 兩邊就脫鉤。也因為存過的值會蓋掉檔案裡的預設值，**預設值漂移很難從畫面上發現**——改預設時兩個 repo 都要改。
-- **關鍵字不要隨手改。** 每個字為什麼長這樣（哪些被導覽列污染、哪些片語零命中會退回裸字）
-  見 eu_monitor 的 `CLAUDE.md` 與 `docs/AGENT_BRIEF.md` §10。consilium 的 `kw` 沒有證據之前不要動。
+- **預設關鍵字是使用者 2026-09-24 指定的，不要自行改動。** 三站刻意包含導覽列裡就有的單字
+  （Taiwan、China、Indo-Pacific）：Google 那層因此幾乎不過濾，由這個工具的 404 基準線分出導覽列命中——
+  召回優先。**不要以「導覽列污染」為由換回片語**；eu_monitor 的 `CLAUDE.md` 與 `docs/AGENT_BRIEF.md` §10
+  那套換片語的方法，只在使用者要 Google 那層也過濾時才適用。來龍去脈見 README「預設關鍵字」。
 
 ## 書籤（bookmarklet.html）
 
@@ -132,11 +136,11 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
 
 ```bash
 node keyword-test.js                             # 比對規則，不連網；兩份實作的結果必須一致
-node verify.js urls.txt -o regression.out.html   # 已知答案，應為「正文確認 4　找不到關鍵字 3　無法檢查 1　只在導覽列 0」
+node verify.js urls.txt -o regression.out.html   # 已知答案，應為「正文確認 4　找不到關鍵字 1　無法檢查 2　只在導覽列 3」
 ```
 
-收集狀況三站都是 ⚠ 是正常的（`urls.txt` 沒有收集紀錄）。「只在導覽列」用現在的關鍵字沒有現成案例，
-要測它的做法寫在 `urls.txt` 最後。
+收集狀況三站都是 ⚠ 是正常的（`urls.txt` 沒有收集紀錄）。「找不到關鍵字」用現在的關鍵字幾乎不會出現
+（兩站每一頁的導覽列都有 Taiwan、China），測試裡用 EEAS 的 `robots.txt` 走這條路。
 **一定要用 `-o` 另存。** 不指定時會寫到 `search_result.html`，那是 `run.cmd` 給使用者看的報告，
 會把使用者最近一次的真實結果蓋掉。`*.out.html` 已在 `.gitignore`。
 `-o` 不要寫 `/dev/null`——Windows 上會在當前目錄產生一個叫 `nul` 的檔案。

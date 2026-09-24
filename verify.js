@@ -109,6 +109,53 @@ function siteFor(host) {
   return SITES.find((s) => host === s.domain || host.endsWith('.' + s.domain)) || null;
 }
 
+// PDF 一律「無法檢查」。這個工具只讀得懂 HTML，把 PDF 當 HTML 數關鍵字，數到的是
+// 壓縮過的位元組，幾乎一定是 0，會被誤判成「找不到關鍵字」。只看網址（結尾 .pdf 或
+// /pdf）——網頁版經 Jina 看不到目標站的 Content-Type，兩邊要用同一條規則。
+// 2026-09-24：consilium 的 PDF 放在 data.consilium.europa.eu，這個子網域其實沒擋程式
+// （curl 回 200），之前卻被標成「該站回 403」——理由是錯的。index.html 有同樣一份。
+const PDF_REASON = 'PDF 檔：這個工具讀不了 PDF 的內容，要自己開來看。';
+
+function isPdfUrl(u) {
+  try { return /(\.pdf|\/pdf)$/i.test(new URL(u).pathname); }
+  catch (e) { return false; }
+}
+
+// 理事會文件的網址：data.consilium.europa.eu/doc/document/<文件編號>/<語言>/pdf。
+// 同一份文件常整批出現十幾種語言版本（2026-09-24：ST-13528-2026-INIT 一次 16 種），
+// 都是同一份的官方譯本。合併成一筆顯示，每個語言的連結都留在那一筆底下——
+// 一個連結都不丟，只是不用逐筆看 16 次。index.html 有同樣一份。
+function councilDocKey(u) {
+  try {
+    const p = new URL(u);
+    if (p.hostname !== 'data.consilium.europa.eu') return null;
+    const m = /^\/doc\/document\/([^\/]+)\/([a-z]{2,3})\/pdf$/i.exec(p.pathname);
+    return m ? { id: m[1], lang: m[2].toLowerCase() } : null;
+  } catch (e) { return null; }
+}
+
+function groupCouncilDocs(results) {
+  const out = [];
+  const byId = {};
+  results.forEach((r) => {
+    const k = councilDocKey(r.url);
+    if (!k) { out.push(r); return; }
+    let g = byId[k.id];
+    if (!g) {
+      g = byId[k.id] = Object.assign({}, r, { docId: k.id, langs: [] });
+      out.push(g);
+    }
+    g.langs.push({ lang: k.lang, url: r.url });
+  });
+  out.forEach((g) => {
+    if (!g.langs) return;
+    g.langs.sort((a, b) => (b.lang === 'en') - (a.lang === 'en'));   // en 放最前面，其餘照原順序
+    g.url = g.langs[0].url;
+    g.title = g.docId + '（理事會文件' + (g.langs.length > 1 ? '，' + g.langs.length + ' 種語言' : '') + '）';
+  });
+  return out;
+}
+
 async function fetchPage(url) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
@@ -190,6 +237,12 @@ async function checkUrl(rawUrl) {
   out.domain = site.domain;
 
   const keywords = parseKeywords(site.kw);
+
+  if (isPdfUrl(rawUrl)) {
+    out.state = 'unknown';
+    out.reason = PDF_REASON;
+    return out;
+  }
 
   if (site.knownBlocked) {
     out.state = 'unknown';
@@ -304,10 +357,13 @@ const ABSENT_NOTE = 'Google 回了這幾頁，但抓到的頁面上一個關鍵�
   '工具判斷不了，所以不能當成 Google 誤判。請看標題決定要不要點開。';
 
 function renderHtml(results, meta) {
-  const confirmed = results.filter((r) => r.state === 'confirmed');
-  const absent = results.filter((r) => r.state === 'absent');
-  const unknown = results.filter((r) => r.state === 'unknown');
-  const chrome = results.filter((r) => r.state === 'chrome');
+  // 同一份理事會文件的各語言版本先合併成一筆，下面的分區與計數都用合併後的
+  const shown = groupCouncilDocs(results);
+  const confirmed = shown.filter((r) => r.state === 'confirmed');
+  const absent = shown.filter((r) => r.state === 'absent');
+  const unknown = shown.filter((r) => r.state === 'unknown');
+  const chrome = shown.filter((r) => r.state === 'chrome');
+  const unknownUrls = unknown.reduce((n, r) => n + (r.langs ? r.langs.length : 1), 0);
 
   const section = (title, cls, rows, bodyFn, note) => {
     if (rows.length === 0) return '';
@@ -344,8 +400,17 @@ function renderHtml(results, meta) {
 
     section('無法檢查', 'unknown', unknown, (r) =>
       '<article>' + linkOf(r) +
+      (r.langs && r.langs.length > 1
+        ? '<div class="kw sub">各語言版本：' + r.langs.map((l) =>
+          '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener noreferrer">' +
+          escapeHtml(l.lang) + '</a>').join(' ') + '</div>'
+        : '') +
       '<div class="why">' + escapeHtml(r.reason || '') + '</div>' +
-      '</article>') +
+      '</article>',
+      unknownUrls > unknown.length
+        ? '同一份理事會文件的不同語言版本合併成一筆：' + unknownUrls + ' 個網址 → ' + unknown.length +
+          ' 筆。每個語言的連結都在該筆底下。'
+        : '') +
 
     section('只在導覽列命中（Google 誤判）', 'chrome', chrome, (r) =>
       '<article>' + linkOf(r) +
@@ -506,7 +571,9 @@ async function main() {
   };
   fs.writeFileSync(output, renderHtml(results, meta), 'utf8');
 
-  const n = (s) => results.filter((r) => r.state === s).length;
+  // 計數用合併後的筆數，跟報告、網頁版一致
+  const shown = groupCouncilDocs(results);
+  const n = (s) => shown.filter((r) => r.state === s).length;
   console.log('\n正文確認 ' + n('confirmed') +
               '　找不到關鍵字 ' + n('absent') +
               '　無法檢查 ' + n('unknown') +

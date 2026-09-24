@@ -4,18 +4,18 @@
     {
       "name": "EEAS（歐盟對外事務部）",
       "domain": "eeas.europa.eu",
-      "kw": "Taiwan Strait;cross-Strait;Chinese;PRC;Beijing;South China Sea;the Indo-Pacific;Indo-Pacific region;NATO;drone;cables"
+      "kw": "Taiwan;china;Chinese;PRC;Beijing;EU-China;Indo-Pacific;NATO;drone;cables"
     },
     {
       "name": "Council of the EU（歐盟理事會）",
       "domain": "consilium.europa.eu",
-      "kw": "Taiwan;China;Chinese;PRC;NATO;drone;cables;Indo-Pacific",
+      "kw": "Taiwan;china;Chinese;PRC;Beijing;EU-China;Indo-Pacific;NATO;drone;cables",
       "knownBlocked": "該站對所有自動化客戶端回 403（JS 指紋挑戰），連無頭瀏覽器也過不去。"
     },
     {
       "name": "NATO（北約）",
       "domain": "nato.int",
-      "kw": "Chinese;PRC;Beijing;Indo-Pacific partners;South China Sea;drone;cables"
+      "kw": "Taiwan;cross-Strait;China;Chinese;PRC;Beijing;Indo-Pacific;Asia-Pacific;South China Sea;drone;cables"
     }
   ],
   "baselineProbePath": "/zz-eu-verify-baseline-probe"

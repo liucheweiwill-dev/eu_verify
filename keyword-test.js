@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 //
-// keyword-test.js — 關鍵字比對規則的測試。不連網、零依賴。
+// keyword-test.js — 判定規則的測試。不連網、零依賴。
 //
 // 用法：  node keyword-test.js
 //
-// 比對規則（keywordPattern／countKeyword）在 index.html 和 verify.js 各有一份，
-// 兩邊必須一模一樣。這裡從兩個檔案各自抽出那幾個函式，用同一批案例跑，
-// 任何一邊答錯、或兩邊答案不一樣，都會 exit 1。規則為什麼長這樣見 README「比對規則」。
+// 關鍵字比對（keywordPattern／countKeyword）、PDF 判斷（isPdfUrl）、理事會文件合併
+// （councilDocKey／groupCouncilDocs）在 index.html 和 verify.js 各有一份，兩邊必須一模一樣。
+// 這裡從兩個檔案各自抽出那幾個函式，用同一批案例跑，任何一邊答錯、或兩邊答案
+// 不一樣，都會 exit 1。規則為什麼長這樣見 README「比對規則」。
 
 'use strict';
 
@@ -26,10 +27,12 @@ function extract(src, name) {
   return src.slice(start, i + 1);
 }
 
+const FNS = ['escapeRegExp', 'keywordPattern', 'countKeyword', 'isPdfUrl', 'councilDocKey', 'groupCouncilDocs'];
+
 function load(file) {
   const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
-  const body = ['escapeRegExp', 'keywordPattern', 'countKeyword'].map((n) => extract(src, n)).join('\n');
-  return new Function(body + '\nreturn { countKeyword: countKeyword };')();
+  const body = FNS.map((n) => extract(src, n)).join('\n');
+  return new Function(body + '\nreturn { ' + FNS.map((n) => n + ': ' + n).join(', ') + ' };')();
 }
 
 const impls = { 'index.html': load('index.html'), 'verify.js': load('verify.js') };
@@ -65,12 +68,56 @@ const cases = [
 ];
 
 let fail = 0;
+let total = 0;
 for (const [kw, text, want, why] of cases) {
   const got = Object.entries(impls).map(([f, m]) => [f, m.countKeyword(text, kw)]);
   const ok = got.every(([, n]) => n === want);
+  total++;
   if (!ok) fail++;
   console.log((ok ? 'OK  ' : 'FAIL') + '  ' + kw.padEnd(22) + ' 預期 ' + want + '  ' +
     got.map(([f, n]) => f + '=' + n).join(' ') + '   ' + why);
 }
-console.log('\n' + (cases.length - fail) + '/' + cases.length + ' 通過' + (fail ? '，' + fail + ' 失敗' : ''));
+
+// ---- PDF 判斷與理事會文件合併 ----
+// 每一案：[說明, 函式名, 參數, 預期結果]；兩份實作都要給出跟預期一模一樣的結果。
+const DOC = 'https://data.consilium.europa.eu/doc/document/ST-13528-2026-INIT/';
+const r = (url) => ({ url: url, state: 'unknown', reason: 'x' });
+const structural = [
+  ['理事會 PDF（/pdf 結尾）', 'isPdfUrl', [DOC + 'en/pdf'], true],
+  ['.PDF 結尾（大小寫不拘）', 'isPdfUrl', ['https://www.eeas.europa.eu/sites/default/files/a.PDF'], true],
+  ['一般網頁', 'isPdfUrl', ['https://www.eeas.europa.eu/eeas/foo_en'], false],
+  ['路徑中間有 pdf 不算', 'isPdfUrl', ['https://www.nato.int/pdfs/foo.htm'], false],
+  ['理事會文件的編號與語言', 'councilDocKey', [DOC + 'DE/pdf'], { id: 'ST-13528-2026-INIT', lang: 'de' }],
+  ['www.consilium 的網頁不是文件', 'councilDocKey', ['https://www.consilium.europa.eu/en/policies/sanctions-against-russia/'], null],
+  ['同一份文件的三種語言合併成一筆，en 排第一、其他照原順序；別的網址原樣留著',
+    'groupCouncilDocs',
+    [[r('https://www.eeas.europa.eu/a_en'), r(DOC + 'de/pdf'), r(DOC + 'en/pdf'),
+      r('https://data.consilium.europa.eu/doc/document/PE-46-2026-INIT/ro/pdf'), r(DOC + 'fr/pdf')]],
+    [r('https://www.eeas.europa.eu/a_en'),
+      Object.assign(r(DOC + 'en/pdf'), {
+        docId: 'ST-13528-2026-INIT',
+        langs: [{ lang: 'en', url: DOC + 'en/pdf' }, { lang: 'de', url: DOC + 'de/pdf' }, { lang: 'fr', url: DOC + 'fr/pdf' }],
+        title: 'ST-13528-2026-INIT（理事會文件，3 種語言）',
+      }),
+      Object.assign(r('https://data.consilium.europa.eu/doc/document/PE-46-2026-INIT/ro/pdf'), {
+        docId: 'PE-46-2026-INIT',
+        langs: [{ lang: 'ro', url: 'https://data.consilium.europa.eu/doc/document/PE-46-2026-INIT/ro/pdf' }],
+        title: 'PE-46-2026-INIT（理事會文件）',
+      })]],
+];
+
+// 比較時不管欄位順序
+const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+  ? Object.keys(x).sort().reduce((o, key) => { o[key] = x[key]; return o; }, {}) : x));
+
+for (const [why, fn, args, want] of structural) {
+  const got = Object.entries(impls).map(([f, m]) => [f, canon(m[fn].apply(null, args))]);
+  const ok = got.every(([, g]) => g === canon(want));
+  total++;
+  if (!ok) fail++;
+  console.log((ok ? 'OK  ' : 'FAIL') + '  ' + fn.padEnd(22) + ' ' + why +
+    (ok ? '' : '\n        預期 ' + canon(want) + '\n' + got.map(([f, g]) => '        ' + f + ' ' + g).join('\n')));
+}
+
+console.log('\n' + (total - fail) + '/' + total + ' 通過' + (fail ? '，' + fail + ' 失敗' : ''));
 process.exit(fail ? 1 : 0);

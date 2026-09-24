@@ -297,6 +297,45 @@
     return null;
   }
 
+  // PDF 一律「無法檢查」，同一份理事會文件的各語言版本合併成一筆。
+  // 規則跟 verify.js 一模一樣（理由寫在那邊），改一邊要改另一邊。
+  var PDF_REASON = 'PDF 檔：這個工具讀不了 PDF 的內容，要自己開來看。';
+
+  function isPdfUrl(u) {
+    try { return /(\.pdf|\/pdf)$/i.test(new URL(u).pathname); }
+    catch (e) { return false; }
+  }
+
+  function councilDocKey(u) {
+    try {
+      var p = new URL(u);
+      if (p.hostname !== 'data.consilium.europa.eu') return null;
+      var m = /^\/doc\/document\/([^\/]+)\/([a-z]{2,3})\/pdf$/i.exec(p.pathname);
+      return m ? { id: m[1], lang: m[2].toLowerCase() } : null;
+    } catch (e) { return null; }
+  }
+
+  function groupCouncilDocs(results) {
+    var out = [], byId = {};
+    results.forEach(function (r) {
+      var k = councilDocKey(r.url);
+      if (!k) { out.push(r); return; }
+      var g = byId[k.id];
+      if (!g) {
+        g = byId[k.id] = Object.assign({}, r, { docId: k.id, langs: [] });
+        out.push(g);
+      }
+      g.langs.push({ lang: k.lang, url: r.url });
+    });
+    out.forEach(function (g) {
+      if (!g.langs) return;
+      g.langs.sort(function (a, b) { return (b.lang === 'en') - (a.lang === 'en'); });   // en 放最前面
+      g.url = g.langs[0].url;
+      g.title = g.docId + '（理事會文件' + (g.langs.length > 1 ? '，' + g.langs.length + ' 種語言' : '') + '）';
+    });
+    return out;
+  }
+
   // 從一段文字（乾淨的網址清單，或整段貼上的雜訊）挑出目標站網址。
   // 邏輯跟 extract.js 一致：解開 Google 的 /url?q=、去掉 Google 自己的
   // 連結、去 hash／utm、去重。
@@ -479,6 +518,7 @@
     if (!site) { out.state = 'unknown'; out.reason = '這個 host 不在設定裡'; return out; }
     out.domain = site.domain;
 
+    if (isPdfUrl(rawUrl)) { out.state = 'unknown'; out.reason = PDF_REASON; return out; }
     if (site.knownBlocked) { out.state = 'unknown'; out.reason = site.knownBlocked; return out; }
 
     var keywords = parseKeywords(site.kw);
@@ -530,10 +570,13 @@
     '工具判斷不了，所以不能當成 Google 誤判。請看標題決定要不要點開。';
 
   function render(results) {
-    var confirmed = results.filter(function (r) { return r.state === 'confirmed'; });
-    var absent = results.filter(function (r) { return r.state === 'absent'; });
-    var unknown = results.filter(function (r) { return r.state === 'unknown'; });
-    var chrome = results.filter(function (r) { return r.state === 'chrome'; });
+    // 同一份理事會文件的各語言版本先合併成一筆，下面的分區與計數都用合併後的
+    var shown = groupCouncilDocs(results);
+    var confirmed = shown.filter(function (r) { return r.state === 'confirmed'; });
+    var absent = shown.filter(function (r) { return r.state === 'absent'; });
+    var unknown = shown.filter(function (r) { return r.state === 'unknown'; });
+    var chrome = shown.filter(function (r) { return r.state === 'chrome'; });
+    var unknownUrls = unknown.reduce(function (n, r) { return n + (r.langs ? r.langs.length : 1); }, 0);
 
     // 順序：先正文確認，再兩類要自己看的（找不到關鍵字、無法檢查），
     // 最後才是可以略過的只在導覽列。
@@ -562,8 +605,18 @@
         return '<article>' + linkOf(r) + '</article>';
       }, ABSENT_NOTE) +
       section('無法檢查', 'unknown', unknown, function (r) {
-        return '<article>' + linkOf(r) + '<div class="why">' + escapeHtml(r.reason || '') + '</div></article>';
-      }) +
+        return '<article>' + linkOf(r) +
+          (r.langs && r.langs.length > 1
+            ? '<div class="kw sub">各語言版本：' + r.langs.map(function (l) {
+              return '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener noreferrer">' +
+                escapeHtml(l.lang) + '</a>';
+            }).join(' ') + '</div>'
+            : '') +
+          '<div class="why">' + escapeHtml(r.reason || '') + '</div></article>';
+      }, unknownUrls > unknown.length
+        ? '同一份理事會文件的不同語言版本合併成一筆：' + unknownUrls + ' 個網址 → ' + unknown.length +
+          ' 筆。每個語言的連結都在該筆底下。'
+        : '') +
       section('只在導覽列命中（Google 誤判）', 'chrome', chrome, function (r) {
         return '<article>' + linkOf(r) + '<div class="kw">' + kwChips(r.chromeOnly, 'dim') + '</div></article>';
       });
@@ -683,9 +736,10 @@
   // 不附上的話，別人會以為這就是全部。
   function buildConfirmedList(results) {
     var confirmed = results.filter(function (r) { return r.state === 'confirmed'; });
-    var absent = results.filter(function (r) { return r.state === 'absent'; }).length;
-    var unknown = results.filter(function (r) { return r.state === 'unknown'; }).length;
-    var chrome = results.filter(function (r) { return r.state === 'chrome'; }).length;
+    var shown = groupCouncilDocs(results);   // 筆數跟畫面上的計數一致
+    var absent = shown.filter(function (r) { return r.state === 'absent'; }).length;
+    var unknown = shown.filter(function (r) { return r.state === 'unknown'; }).length;
+    var chrome = shown.filter(function (r) { return r.state === 'chrome'; }).length;
     var ranges = {};
     Object.keys(lastLogs).forEach(function (k) { if (lastLogs[k].r) ranges[lastLogs[k].r] = 1; });
     var rs = Object.keys(ranges).map(function (r) { return QDR_LABEL[r] || r; });
