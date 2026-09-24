@@ -98,7 +98,6 @@
   .cov { font-size:13.5px; padding:3px 0; }
   .cov.ok { color:var(--ok); }
   .cov.bad { color:var(--warn); font-weight:600; }
-  .cov.none { color:var(--muted); }
   .covwarn { margin-top:10px; font-size:13px; color:var(--warn); }
 </style>
 </head>
@@ -587,9 +586,10 @@
 
   var QDR_LABEL = { 'qdr:d': '過去 24 小時', 'qdr:w': '過去一週', 'qdr:m': '過去一個月' };
 
-  // 回傳每一站的收集狀況；同時畫到畫面上。
-  // 狀態只有三種：ok（確定收完）、bad（確定沒收完或出錯）、none（不知道）。
-  // 「不知道」不能被當成「沒問題」——那正是這個專案要避免的誤判。
+  // 回傳每一站的收集狀況（畫到畫面上的是 renderCoverage）。
+  // 狀態只有兩種：ok（確定收完）和 bad（其他一切：沒收完、出錯、沒有紀錄）。
+  // 沒有紀錄一律 bad——「不知道」不能被當成「沒問題」，那正是這個專案要避免的誤判。
+  // 規則跟 verify.js 的 computeCoverage 完全一樣，改一邊就要改另一邊。
   function computeCoverage(urls, logs) {
     var hasAnyLog = Object.keys(logs).length > 0;
     return SITES.map(function (s) {
