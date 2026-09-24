@@ -23,6 +23,12 @@
   .depend { font-size:12.5px; color:var(--warn); margin:0 0 20px; }
   .panel { background:var(--card); border:1px solid var(--line); border-radius:12px;
     padding:18px; margin-bottom:16px; }
+  .guide { font-size:14px; margin-top:12px; }
+  .guide p { margin:0; }
+  .guide ol { margin:10px 0 0; padding-left:22px; }
+  .guide li { margin-bottom:6px; }
+  .guide li:last-child { margin-bottom:0; }
+  .guide .hint { color:var(--muted); font-size:13px; }
   textarea { width:100%; min-height:120px; resize:vertical;
     background:var(--code); color:var(--ink); border:1px solid var(--line);
     border-radius:8px; padding:9px 10px; font:13px/1.5 ui-monospace,Consolas,monospace; }
@@ -105,7 +111,23 @@
 <div class="wrap">
 
   <h1>EU / NATO 輿情監看</h1>
-  <p class="sub">搜尋三站 → 收集網址 → 驗證關鍵字是真的在正文裡，還是只在導覽列裡。</p>
+  <!-- 給第一次使用的人看的完整流程。按鈕與書籤的名稱要跟實際顯示的字一模一樣，
+       改了按鈕文字或書籤名稱（bookmarklet.html）時這裡要跟著改。 -->
+  <div class="panel guide">
+    <p><b>使用方式</b>　第一次使用，請先把「收集結果網址 v2」書籤加到 Chrome 的書籤列：
+      到<a href="./bookmarklet.html">書籤安裝頁</a>，把藍色按鈕拖到書籤列（只要做一次）。</p>
+    <ol>
+      <li><b>搜尋</b>：按「開啟三個分頁」。時間範圍和關鍵字都可以在下面「① 搜尋」區修改。</li>
+      <li><b>收集</b>：在剛開的三個 Google 分頁上，各按一次「收集結果網址 v2」書籤，
+        等跳出的面板出現 ✓ 再切到下一個分頁。
+        <span class="hint">面板會累加每次收到的網址；要開始新的一輪，先按面板上的「清空」。</span></li>
+      <li><b>驗證</b>：回到這一頁按「貼上並比對」，會逐頁檢查關鍵字是真的在正文裡，還是只在網站的導覽列裡。
+        <span class="hint">第一次按時 Chrome 會詢問能不能讀取剪貼簿，請按「允許」。</span></li>
+      <li><b>看結果</b>：結果條列在頁面最下方。先看「收集狀況」三站是不是都 ✓；
+        「找不到關鍵字」和「無法檢查」的請自己點開看，「只在導覽列」可以略過。
+        按「複製正文確認清單」可以複製確認有命中的網址。</li>
+    </ol>
+  </div>
 
   <!-- ① 搜尋：這段完全不依賴 Jina，只是組 Google 網址、開分頁。
        Jina 掛掉時①②照樣能用，只有③會顯示「無法檢查」。 -->
