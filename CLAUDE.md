@@ -124,11 +124,13 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
 ## 改完之後
 
 ```bash
-node verify.js   # 讀 urls.txt 的已知答案，應為「正文確認 2　只在導覽列 2　無法檢查 1」
+node verify.js urls.txt -o regression.out.html   # 已知答案，應為「正文確認 2　只在導覽列 2　無法檢查 1」
 ```
 
-收集狀況三站都是 ⚠ 是正常的（`urls.txt` 沒有收集紀錄）。報告寫到 `search_result.html`（已在 `.gitignore`）。
-用 `-o` 時不要寫 `/dev/null`——Windows 上會在當前目錄產生一個叫 `nul` 的檔案。
+收集狀況三站都是 ⚠ 是正常的（`urls.txt` 沒有收集紀錄）。
+**一定要用 `-o` 另存。** 不指定時會寫到 `search_result.html`，那是 `run.cmd` 給使用者看的報告，
+會把使用者最近一次的真實結果蓋掉。`*.out.html` 已在 `.gitignore`。
+`-o` 不要寫 `/dev/null`——Windows 上會在當前目錄產生一個叫 `nul` 的檔案。
 
 動到 `index.html`／`bookmarklet.html` 的 script，確認語法能解析；動到預設關鍵字，確認兩個 repo 一致
 （假設兩個 repo 放在同一層目錄）：
