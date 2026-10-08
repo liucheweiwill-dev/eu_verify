@@ -51,6 +51,7 @@
   section.ok h2 { color:var(--ok); }
   section.chrome h2 { color:var(--dim); }
   section.unknown h2, section.absent h2 { color:var(--warn); }
+  section.stale h2 { color:var(--ok); opacity:.8; }
   section h3 { font-size:13.5px; font-weight:600; color:var(--dim); margin:14px 0 8px; }
   section h3 .n { color:var(--muted); font-weight:400; }
   article { background:var(--card); border:1px solid var(--line); border-radius:10px;
@@ -126,8 +127,9 @@
       <li><b>驗證</b>：回到這一頁按「貼上並比對」，會逐頁檢查關鍵字是真的在正文裡，還是只在網站的導覽列裡。
         <span class="hint">第一次按時 Chrome 會詢問能不能讀取剪貼簿，請按「允許」。</span></li>
       <li><b>看結果</b>：結果條列在頁面最下方。先看「收集狀況」三站是不是都 ✓；
+        第一區是正文有命中、而且日期在搜尋範圍內的；第二區是有命中但頁面日期比搜尋範圍舊的（多半是舊文章）。
         「找不到關鍵字」和「無法檢查」的請自己點開看，「其他」（只在導覽列命中、非英文頁面）可以略過。
-        每筆底下有頁面上寫的日期，可以用來認出舊文章。按「複製正文確認清單」可以複製確認有命中的網址。</li>
+        按「複製正文確認清單」可以複製第一區的網址。</li>
     </ol>
   </div>
 
@@ -420,9 +422,54 @@
     } catch (e) { return ''; }
   }
 
+  // 正文命中、但頁面日期早於搜尋範圍的，排到第二區。規則跟 verify.js 一模一樣（理由寫在那邊）。
+  var MONTH_NUM = {
+    'january': 1, 'jan': 1, 'janvier': 1, 'enero': 1, 'januar': 1,
+    'february': 2, 'feb': 2, 'février': 2, 'fevrier': 2, 'febrero': 2, 'februar': 2,
+    'march': 3, 'mar': 3, 'mars': 3, 'marzo': 3, 'märz': 3, 'maerz': 3,
+    'april': 4, 'apr': 4, 'avril': 4, 'abril': 4,
+    'may': 5, 'mai': 5, 'mayo': 5,
+    'june': 6, 'jun': 6, 'juin': 6, 'junio': 6, 'juni': 6,
+    'july': 7, 'jul': 7, 'juillet': 7, 'julio': 7, 'juli': 7,
+    'august': 8, 'aug': 8, 'août': 8, 'aout': 8, 'agosto': 8,
+    'september': 9, 'sep': 9, 'sept': 9, 'septembre': 9, 'septiembre': 9, 'setiembre': 9,
+    'october': 10, 'oct': 10, 'octobre': 10, 'octubre': 10, 'oktober': 10,
+    'november': 11, 'nov': 11, 'novembre': 11, 'noviembre': 11,
+    'december': 12, 'dec': 12, 'décembre': 12, 'decembre': 12, 'diciembre': 12, 'dezember': 12,
+  };
+  var RANGE_DAYS = { 'qdr:d': 1, 'qdr:w': 7, 'qdr:m': 31, 'qdr:y': 366 };
+  var STALE_GRACE_DAYS = 2;
+
+  function parseDate(s) {
+    if (!s) return null;
+    var t = s.toLowerCase(), m, d = null;
+    if ((m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(t))) d = [+m[3], +m[2], +m[1]];
+    else if ((m = /^(\d{4})-(\d\d)-(\d\d)/.exec(t))) d = [+m[1], +m[2], +m[3]];
+    else if ((m = /^(\d{1,2})(?:\s+de)?\s+([^\s.]+)\.?(?:\s+de)?\s+(\d{4})$/.exec(t)) && MONTH_NUM[m[2]]) d = [+m[3], MONTH_NUM[m[2]], +m[1]];
+    else if ((m = /^([^\s.]+)\.?\s+(\d{1,2}),\s+(\d{4})$/.exec(t)) && MONTH_NUM[m[1]]) d = [+m[3], MONTH_NUM[m[1]], +m[2]];
+    return d && d[1] >= 1 && d[1] <= 12 && d[2] >= 1 && d[2] <= 31 ? d : null;
+  }
+
+  function ageDays(s, today) {
+    var d = parseDate(s);
+    if (!d) return null;
+    return Math.round((Date.UTC(today[0], today[1] - 1, today[2]) - Date.UTC(d[0], d[1] - 1, d[2])) / 86400000);
+  }
+
+  function isStale(s, qdr, today) {
+    var days = RANGE_DAYS[qdr], age = ageDays(s, today);
+    return !!days && age !== null && age > days + STALE_GRACE_DAYS;
+  }
+
+  function todayParts() {
+    var n = new Date();
+    return [n.getFullYear(), n.getMonth() + 1, n.getDate()];
+  }
+
   function sectionOf(r) {
     var lang = r.lang || urlLang(r.url) || 'en';
-    return lang !== 'en' ? 'foreign' : r.state;
+    if (lang !== 'en') return 'foreign';
+    return r.state === 'confirmed' && r.stale ? 'stale' : r.state;
   }
 
   // 從一段文字（乾淨的網址清單，或整段貼上的雜訊）挑出目標站網址。
@@ -665,11 +712,20 @@
   var FOREIGN_NOTE = '頁面標示的語言與正文用字都不是英文的頁面，不論命中與否都放在這裡；' +
     '每一筆原本的判定（正文命中、只在導覽列……）照樣標在底下，一筆都沒丟。';
 
+  // 第二區（正文命中、日期早於搜尋範圍）與第一區沒依日期分組時的說明。verify.js 的報告用同樣的話。
+  var STALE_NOTE = '這幾筆正文有關鍵字，但頁面上的日期早於這次搜尋的時間範圍（另加 ' + STALE_GRACE_DAYS +
+    ' 天寬限，因為 Google 收錄有延遲），多半是 Google 重新收錄的舊文章。' +
+    '日期是工具在頁面上找到的第一個日期，可能不準——標題看起來是新的，請點開確認。';
+  var NO_RANGE_NOTE = '有些網址沒有收集紀錄，不知道搜尋時用的時間範圍，那幾筆沒有依日期分到下一區。';
+
   // 每筆底下的小字：頁面上的日期（有抓到頁面才有）；非英文那一組另外標語言
   function metaLine(r, withLang) {
     var parts = [];
     if (withLang) parts.push('語言：' + (r.lang || urlLang(r.url)));
-    if (r.state !== 'unknown') parts.push(r.date ? '頁面上的日期：' + r.date : '頁面上找不到日期');
+    if (r.state !== 'unknown') {
+      parts.push(r.date ? '頁面上的日期：' + r.date + (r.stale && r.age !== null ? '（' + r.age + ' 天前）' : '')
+        : '頁面上找不到日期');
+    }
     return parts.length ? '<div class="kw sub">' + escapeHtml(parts.join('　')) + '</div>' : '';
   }
 
@@ -697,16 +753,22 @@
     // 同一份理事會文件的各語言版本先合併成一筆，下面的分區與計數都用合併後的
     var shown = groupCouncilDocs(results);
     var pick = function (s) { return shown.filter(function (r) { return sectionOf(r) === s; }); };
-    var confirmed = pick('confirmed'), absent = pick('absent'), unknown = pick('unknown');
+    var confirmed = pick('confirmed'), stale = pick('stale'), absent = pick('absent'), unknown = pick('unknown');
     var chrome = pick('chrome'), foreign = pick('foreign');
     var other = chrome.length + foreign.length;
     var unknownUrls = unknown.reduce(function (n, r) { return n + (r.langs ? r.langs.length : 1); }, 0);
+    var hitBody = function (r) {
+      return '<article>' + linkOf(r) + metaLine(r) + '<div class="kw">' + kwChips(r.hits, 'hit') + '</div>' +
+        (r.chromeOnly.length ? '<div class="kw sub">另有只在導覽列的：' + kwChips(r.chromeOnly, 'dim') + '</div>' : '') +
+        '</article>';
+    };
 
-    // 順序：先正文確認，再兩類要自己看的（找不到關鍵字、無法檢查），
+    // 順序：先正文確認，再正文命中但日期較舊的，再兩類要自己看的（找不到關鍵字、無法檢查），
     // 最後才是可以略過的「其他」（只在導覽列、非英文頁面）。
     els.tally.hidden = false;
     els.tally.innerHTML =
       '<div><b>' + confirmed.length + '</b>正文確認</div>' +
+      '<div><b>' + stale.length + '</b>日期較舊</div>' +
       '<div><b>' + absent.length + '</b>找不到關鍵字</div>' +
       '<div><b>' + unknown.length + '</b>無法檢查</div>' +
       '<div><b>' + other + '</b>其他</div>';
@@ -720,11 +782,9 @@
     }
 
     els.results.innerHTML =
-      section('正文確認命中', 'ok', confirmed, function (r) {
-        return '<article>' + linkOf(r) + metaLine(r) + '<div class="kw">' + kwChips(r.hits, 'hit') + '</div>' +
-          (r.chromeOnly.length ? '<div class="kw sub">另有只在導覽列的：' + kwChips(r.chromeOnly, 'dim') + '</div>' : '') +
-          '</article>';
-      }) +
+      section('正文確認命中', 'ok', confirmed, hitBody,
+        confirmed.some(function (r) { return !r.range; }) ? NO_RANGE_NOTE : '') +
+      section('正文命中，但日期早於搜尋範圍', 'stale', stale, hitBody, STALE_NOTE) +
       section('找不到關鍵字（要自己看）', 'absent', absent, function (r) {
         return '<article>' + linkOf(r) + metaLine(r) + '</article>';
       }, ABSENT_NOTE) +
@@ -871,6 +931,7 @@
     var shown = groupCouncilDocs(results);   // 筆數跟畫面上的計數一致
     var pick = function (s) { return shown.filter(function (r) { return sectionOf(r) === s; }); };
     var confirmed = pick('confirmed');
+    var stale = pick('stale').length;
     var absent = pick('absent').length;
     var unknown = pick('unknown').length;
     var chrome = pick('chrome').length;
@@ -888,7 +949,8 @@
       out.push('   頁面上的日期：' + (r.date || '找不到'));
     });
     out.push('');
-    out.push('—— 未列入：找不到關鍵字 ' + absent + ' 筆、無法檢查 ' + unknown + ' 筆（這兩類要自己看，不代表沒有命中）、' +
+    out.push('—— 未列入：正文命中但日期早於搜尋範圍 ' + stale + ' 筆（多半是舊文章；日期是工具抓的，可能不準）、' +
+      '找不到關鍵字 ' + absent + ' 筆、無法檢查 ' + unknown + ' 筆（這兩類要自己看，不代表沒有命中）、' +
       '其他 ' + (chrome + foreign.length) + ' 筆（只在導覽列 ' + chrome + '、非英文 ' + foreign.length +
       (foreignHits ? '，其中 ' + foreignHits + ' 筆非英文頁面有正文命中' : '') + '）。');
     out.push('—— 「頁面上的日期」是工具在頁面上找到的第一個日期，僅供參考。');
@@ -957,8 +1019,13 @@
       els.progress.textContent += line + ' …\n';
       els.progress.scrollTop = els.progress.scrollHeight;
       var r = await checkUrl(urls[i]);
+      // 這一站搜尋時用的時間範圍，看書籤的收集紀錄；沒有紀錄就不知道，不依日期分組
+      var log = lastLogs[r.domain];
+      r.range = (log && log.r) || '';
+      r.age = ageDays(r.date, todayParts());
+      r.stale = isStale(r.date, r.range, todayParts());
       results.push(r);
-      var mark = r.state === 'confirmed' ? '正文命中'
+      var mark = r.state === 'confirmed' ? (r.stale ? '正文命中，但日期早於搜尋範圍' : '正文命中')
         : r.state === 'chrome' ? '只在導覽列'
         : r.state === 'absent' ? '找不到關鍵字'
         : '無法檢查 — ' + r.reason;

@@ -47,9 +47,10 @@ function extractVar(src, name) {
   return 'var ' + name + ' = ' + src.slice(start, end).replace(/;\s*$/, '') + ';';
 }
 
-const VARS = ['DATE_RE', 'STOPWORDS'];
+const VARS = ['DATE_RE', 'STOPWORDS', 'MONTH_NUM', 'RANGE_DAYS', 'STALE_GRACE_DAYS'];
 const FNS = ['escapeRegExp', 'keywordPattern', 'countKeyword', 'isPdfUrl', 'councilDocKey', 'groupCouncilDocs',
-  'datesIn', 'firstDate', 'stopwordCounts', 'declaredLang', 'pageLang', 'urlLang', 'sectionOf'];
+  'datesIn', 'firstDate', 'stopwordCounts', 'declaredLang', 'pageLang', 'urlLang', 'sectionOf',
+  'parseDate', 'ageDays', 'isStale'];
 
 function load(file) {
   const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
@@ -161,6 +162,30 @@ const structural = [
   ['非英文頁面一律「其他」，就算有正文命中', 'sectionOf', [{ state: 'confirmed', lang: 'es', url: 'https://www.eeas.europa.eu/a_es' }], 'foreign'],
   ['沒抓頁面的非英文理事會文件也歸「其他」', 'sectionOf', [{ state: 'unknown', url: 'https://data.consilium.europa.eu/doc/document/PE-46-2026-INIT/ro/pdf' }], 'foreign'],
   ['語言不明的無法檢查留在主列表', 'sectionOf', [{ state: 'unknown', url: 'https://www.nato.int/fr/x' }], 'unknown'],
+
+  // ---- 日期換算與「日期早於搜尋範圍」（今天當成 2026-10-08）----
+  ['dd.mm.yyyy', 'parseDate', ['22.09.2026'], [2026, 9, 22]],
+  ['英文月份', 'parseDate', ['22 September 2026'], [2026, 9, 22]],
+  ['縮寫加句點', 'parseDate', ['01 Oct. 2026'], [2026, 10, 1]],
+  ['法文月份', 'parseDate', ['23 septembre 2026'], [2026, 9, 23]],
+  ['西班牙文含 de', 'parseDate', ['22 de septiembre de 2026'], [2026, 9, 22]],
+  ['美式寫法', 'parseDate', ['September 23, 2026'], [2026, 9, 23]],
+  ['ISO', 'parseDate', ['2026-09-22'], [2026, 9, 22]],
+  ['月份 13 認不出來', 'parseDate', ['31.13.2026'], null],
+  ['空字串', 'parseDate', [''], null],
+  ['跨月份算天數', 'ageDays', ['30.09.2026', [2026, 10, 8]], 8],
+  ['過去一週：16 天前 → 較舊', 'isStale', ['22.09.2026', 'qdr:w', [2026, 10, 8]], true],
+  ['過去一週：10 天前 → 較舊（7＋2 天寬限之外）', 'isStale', ['28.09.2026', 'qdr:w', [2026, 10, 8]], true],
+  ['過去一週：9 天前 → 不算（剛好在寬限內）', 'isStale', ['29.09.2026', 'qdr:w', [2026, 10, 8]], false],
+  ['過去 24 小時：3 天前 → 不算（1＋2 天寬限）', 'isStale', ['05.10.2026', 'qdr:d', [2026, 10, 8]], false],
+  ['過去 24 小時：4 天前 → 較舊', 'isStale', ['04.10.2026', 'qdr:d', [2026, 10, 8]], true],
+  ['過去一個月：23 天前 → 不算', 'isStale', ['15.09.2026', 'qdr:m', [2026, 10, 8]], false],
+  ['不知道搜尋範圍（沒有收集紀錄）→ 不算', 'isStale', ['17.12.2019', '', [2026, 10, 8]], false],
+  ['頁面上找不到日期 → 不算', 'isStale', ['', 'qdr:w', [2026, 10, 8]], false],
+  ['未來的日期 → 不算', 'isStale', ['10.10.2026', 'qdr:d', [2026, 10, 8]], false],
+  ['正文命中且日期較舊 → 第二區', 'sectionOf', [{ state: 'confirmed', lang: 'en', stale: true, url: 'https://www.eeas.europa.eu/a_en' }], 'stale'],
+  ['只在導覽列不管日期', 'sectionOf', [{ state: 'chrome', lang: 'en', stale: true, url: 'https://www.eeas.europa.eu/a_en' }], 'chrome'],
+  ['非英文優先於日期', 'sectionOf', [{ state: 'confirmed', lang: 'es', stale: true, url: 'https://www.eeas.europa.eu/a_es' }], 'foreign'],
 ];
 
 // 比較時不管欄位順序

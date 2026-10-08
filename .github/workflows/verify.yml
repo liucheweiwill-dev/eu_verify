@@ -129,6 +129,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           CONFIRMED=$(node -p "require('./summary.json').confirmed")
+          STALE=$(node -p "require('./summary.json').stale")
           ABSENT=$(node -p "require('./summary.json').absent")
           CHROME=$(node -p "require('./summary.json').chrome")
           FOREIGN=$(node -p "require('./summary.json').foreign")
@@ -145,7 +146,7 @@ jobs:
           收集狀況：
           ${COVERAGE}
 
-          正文確認 ${CONFIRMED}　找不到關鍵字 ${ABSENT}　無法檢查 ${UNKNOWN}　其他 ${OTHER}（只在導覽列 ${CHROME}、非英文 ${FOREIGN}）
+          正文確認 ${CONFIRMED}　日期較舊 ${STALE}　找不到關鍵字 ${ABSENT}　無法檢查 ${UNKNOWN}　其他 ${OTHER}（只在導覽列 ${CHROME}、非英文 ${FOREIGN}）
           ${NEEDLOOK}
 
           完整報告：https://liucheweiwill-dev.github.io/eu_verify/latest-report.html

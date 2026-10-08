@@ -35,7 +35,8 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
 | 判定是「候選頁命中數**超過**同站 404 頁的命中數」，不是直接 grep | 導覽列的字就在每一頁的 HTML 裡，直接 grep 會重犯 Google 的錯 |
 | 關鍵字從字首比對（`keywordPattern`） | 子字串比對會把 Coordinator、Senator、discriminatory 算成 NATO（2026-09-24：使用者實際的 9 筆正文確認中 3 筆是這樣來的） |
 | 以 s 結尾的關鍵字也接受單數；`-ss`／`-us`／`-is` 結尾與去掉 s 後太短的不處理 | Google 會做詞形變化，不跟上的話，Google 靠單數命中的頁面會落到「找不到關鍵字」；例外是免得 Congress、status、news 被砍成別的字 |
-| 結果順序：正文確認 → 找不到關鍵字 → 無法檢查 → 其他（只在導覽列、非英文頁面） | 要自己看的放在可以略過的前面。「其他」是使用者 2026-10-08 指定的 |
+| 結果順序：正文確認 → 正文命中但日期較舊 → 找不到關鍵字 → 無法檢查 → 其他（只在導覽列、非英文頁面） | 要自己看的放在可以略過的前面。第二區與「其他」都是使用者 2026-10-08 指定的 |
+| 日期較舊的判斷（`isStale`）：範圍看書籤收集紀錄的 `r`、另加 2 天寬限；沒有紀錄、沒有日期、認不出來一律留在第一區 | Google 收錄有延遲，前天發今天才收錄的文章對使用者是新的；日期是抓的、可能不準，所以第二區照樣緊接著第一區列出，不是過濾 |
 | 非英文頁面歸「其他」，但**搜尋本身不限語言**，而且每筆原本的判定照樣標著 | Google 的語言篩選會直接不回傳非英文頁面、判斷錯了也不說——那是漏。分區不丟東西 |
 | 要 `<html lang>` 與正文常用字**兩邊都**說不是英文，才算非英文（`pageLang`）；判斷不出來就當英文 | NATO `/fr/` 網址常是英文逐字稿（命中最多的一篇就是）；EEAS 代表處頁面扣掉 404 頁後常用字全是 0。寧可留在主列表多看一筆 |
 | 日期提示取第一個「不在 404 頁上」的日期（`firstDate`），只顯示、不過濾 | 404 頁上的日期屬於導覽列；頁尾「相關報導」的日期比較新但不是這篇的。EEAS 頁面沒有機器可讀日期，抓錯只會顯示錯的提示，用來過濾就會漏 |
@@ -61,8 +62,8 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
 |---|---|
 | 站台網域 | `sites.json`、`extract.js` 的 `TARGETS`、`bookmarklet.html` 的 `TARGETS`、eu_monitor `index.html` 的 `SITES` |
 | 預設關鍵字 | `sites.json` ↔ eu_monitor `index.html` 的 `SITES` |
-| 判定邏輯 | `index.html`（網頁版）和 `verify.js`（`run.cmd` 與 Actions 共用）**各有一份實作**（`keywordPattern`、`countKeyword`、`isPdfUrl`、`councilDocKey`、`groupCouncilDocs`、`firstDate`、`pageLang`、`urlLang`、`sectionOf`、`checkUrl`，以及 `DATE_RE`、`STOPWORDS`）。`node keyword-test.js` 會檢查兩份的結果一致 |
-| 結果分區（目前四區，「其他」含只在導覽列與非英文；計數用合併理事會文件後的筆數） | `index.html` 的畫面與「複製正文確認清單」、`verify.js` 的報告與 `--summary-json`、`verify.yml` 的留言 |
+| 判定邏輯 | `index.html`（網頁版）和 `verify.js`（`run.cmd` 與 Actions 共用）**各有一份實作**（`keywordPattern`、`countKeyword`、`isPdfUrl`、`councilDocKey`、`groupCouncilDocs`、`firstDate`、`pageLang`、`urlLang`、`parseDate`、`isStale`、`sectionOf`、`checkUrl`，以及 `DATE_RE`、`STOPWORDS`、`MONTH_NUM`、`RANGE_DAYS`、`STALE_GRACE_DAYS`）。`node keyword-test.js` 會檢查兩份的結果一致 |
+| 結果分區（目前五區，「其他」含只在導覽列與非英文；計數用合併理事會文件後的筆數） | `index.html` 的畫面與「複製正文確認清單」、`verify.js` 的報告與 `--summary-json`、`verify.yml` 的留言 |
 | 收集狀況的 ✓／⚠ 規則 | `index.html`、`verify.js`，以及書籤面板（`bookmarklet.html` 的 `renderSummary`） |
 | `#euv` 收集紀錄格式 | `bookmarklet.html` 產生；`index.html`、`extract.js`、`verify.js` 讀。紀錄行不能含 `http(s)://`，否則會被當成網址擷取 |
 | 書籤版本號 | `bookmarklet.html` 的 `VERSION`、同一頁的按鈕文字與說明、`index.html` ② 的「收集器 v2」提示 |
@@ -139,7 +140,7 @@ EU／NATO 輿情蒐集的「搜尋 → 收集 → 驗證」一整頁。驗證的
 
 ```bash
 node keyword-test.js                             # 比對規則，不連網；兩份實作的結果必須一致
-node verify.js urls.txt -o regression.out.html   # 已知答案，應為「正文確認 5　找不到關鍵字 1　無法檢查 2　其他 5（只在導覽列 3、非英文 2）」
+node verify.js urls.txt -o regression.out.html   # 已知答案，應為「正文確認 2　日期較舊 3　找不到關鍵字 1　無法檢查 2　其他 5（只在導覽列 3、非英文 2）」
 ```
 
 收集狀況三站都是 ⚠ 是正常的（`urls.txt` 沒有收集紀錄）。「找不到關鍵字」用現在的關鍵字幾乎不會出現
