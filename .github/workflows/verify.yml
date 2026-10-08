@@ -131,6 +131,8 @@ jobs:
           CONFIRMED=$(node -p "require('./summary.json').confirmed")
           ABSENT=$(node -p "require('./summary.json').absent")
           CHROME=$(node -p "require('./summary.json').chrome")
+          FOREIGN=$(node -p "require('./summary.json').foreign")
+          OTHER=$(node -p "require('./summary.json').other")
           UNKNOWN=$(node -p "require('./summary.json').unknown")
           NEEDLOOK=$(node -p "var s=require('./summary.json'); (s.absent + s.unknown) ? '找不到關鍵字與無法檢查的那 ' + (s.absent + s.unknown) + ' 筆要自己看，不代表沒有命中。' : ''")
           # 收集狀況的文字有一部分來自 issue 內文裡的 #euv 紀錄行。這裡只做變數展開，
@@ -143,7 +145,7 @@ jobs:
           收集狀況：
           ${COVERAGE}
 
-          正文確認 ${CONFIRMED}　找不到關鍵字 ${ABSENT}　無法檢查 ${UNKNOWN}　只在導覽列 ${CHROME}
+          正文確認 ${CONFIRMED}　找不到關鍵字 ${ABSENT}　無法檢查 ${UNKNOWN}　其他 ${OTHER}（只在導覽列 ${CHROME}、非英文 ${FOREIGN}）
           ${NEEDLOOK}
 
           完整報告：https://liucheweiwill-dev.github.io/eu_verify/latest-report.html

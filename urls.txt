@@ -1,7 +1,7 @@
 # 一行一個網址，# 開頭的行會被忽略。
 # 下面這幾筆是測試案例，正確答案已知（見 README.md）。
-# 用現在的預設關鍵字跑（11 個網址，同一份理事會文件的兩種語言合併成一筆），
-# 應為「正文確認 4　找不到關鍵字 1　無法檢查 2　只在導覽列 3」。
+# 用現在的預設關鍵字跑（14 個網址，同一份理事會文件的兩種語言合併成一筆），
+# 應為「正文確認 5　找不到關鍵字 1　無法檢查 2　其他 5（只在導覽列 3、非英文 2）」。
 
 # 預期「只在導覽列」——正文完全沒提印太，是使用者 2026-09-22 回報的那頁。
 # Taiwan 1/1、china 2/2、Indo-Pacific 1/1：命中數都跟 404 基準頁一樣，全在導覽列裡。
@@ -34,6 +34,16 @@ https://www.consilium.europa.eu/en/press/press-releases/
 # data.consilium 其實沒擋程式（回 200），不能寫成 403；無法檢查是因為工具讀不了 PDF。
 https://data.consilium.europa.eu/doc/document/ST-13528-2026-INIT/en/pdf
 https://data.consilium.europa.eu/doc/document/ST-13528-2026-INIT/de/pdf
+
+# 預期「其他（非英文）」——EEAS 的西班牙文頁（<html lang="es">，正文也是西班牙文）
+https://www.eeas.europa.eu/eeas/reunion-ministerial-ue-celac-comunicado-de-prensa-conjunto-de-los-copresidentes_es
+
+# 預期「正文確認」，而且**不能**被歸到非英文——NATO 的 /fr/ 網址、<html lang="fr">，
+# 但內容是英文逐字稿（China、drone 命中幾十次）。只看語言標示就會把最重要的一筆丟到後面。
+https://www.nato.int/fr/news-and-events/events/transcripts/2026/09/23/a-conversation-on-natos-future-with-the-secretary-general
+
+# 預期「其他（非英文）」——只有羅馬尼亞文版的理事會文件（網址語言代碼 ro，沒有英文版可以合併）
+https://data.consilium.europa.eu/doc/document/PE-46-2026-INIT/ro/pdf
 
 # 預期「找不到關鍵字」——EEAS 的 robots.txt。這一筆只是為了測這條路：現在的關鍵字含
 # Taiwan／China，兩站的一般頁面導覽列裡都有，所以真實結果幾乎不會落到這一類；

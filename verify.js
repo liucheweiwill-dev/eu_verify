@@ -151,9 +151,93 @@ function groupCouncilDocs(results) {
     if (!g.langs) return;
     g.langs.sort((a, b) => (b.lang === 'en') - (a.lang === 'en'));   // en 放最前面，其餘照原順序
     g.url = g.langs[0].url;
+    g.lang = g.langs[0].lang;   // 有英文版就算英文，留在主列表
     g.title = g.docId + '（理事會文件' + (g.langs.length > 1 ? '，' + g.langs.length + ' 種語言' : '') + '）';
   });
   return out;
+}
+
+// ---------------------------------------------------------------- 日期提示與語言
+//
+// 兩者都只影響「怎麼顯示、放在哪一區」，不影響命中判定，也不會丟掉任何一筆。
+// index.html 有一模一樣的一份，改一邊要改另一邊（keyword-test.js 會檢查）。
+
+// 日期提示：頁面上第一個「不在同站 404 頁上」的日期。2026-10-08 使用者搜「本週」
+// 卻看到 9/22 的文章——EEAS 頁面沒有任何機器可讀的日期，伺服器的 Last-Modified 永遠是
+// 「剛剛」，Google 只能猜。顯示頁面上寫的日期，舊文章一眼就認得出來。
+// - 取第一個、不取最新的：EEAS 把文章日期寫在標題下面（22.09.2026），頁尾「相關報導」
+//   列的是別篇文章的較新日期——那多半就是 Google 以為它是新頁面的原因。
+// - 扣掉 404 頁上的日期：EEAS 導覽列裡有固定的「14 July 2015」，不是這篇的。
+// - 只是提示，不拿來過濾：正文也可能引用別的日期，抓錯了只會顯示錯的提示，不會漏掉頁面。
+const DATE_RE = /\b\d{1,2}\.\d{1,2}\.(?:19|20)\d\d\b|\b\d{1,2}(?:\s+de)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec|janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|januar|februar|märz|maerz|juni|juli|oktober|dezember)\.?(?:\s+de)?\s+(?:19|20)\d\d\b|\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)\.?\s+\d{1,2},\s+(?:19|20)\d\d\b|\b(?:19|20)\d\d-\d\d-\d\d(?!\d)/gi;
+
+function datesIn(text) {
+  return (text.match(DATE_RE) || []).map((s) => s.toLowerCase().replace(/\s+/g, ' '));
+}
+
+function firstDate(text, baselineDates) {
+  const found = text.match(DATE_RE) || [];
+  for (let i = 0; i < found.length; i++) {
+    if (!baselineDates || baselineDates.indexOf(found[i].toLowerCase().replace(/\s+/g, ' ')) < 0) return found[i];
+  }
+  return '';
+}
+
+// 語言：非英文頁面歸到「其他」（使用者 2026-10-08 指定，跟「只在導覽列」一樣可以略過）。
+// 頁面標示的語言（<html lang>）與正文常用字（扣掉 404 頁＝導覽列）兩邊都說不是英文，才算非英文：
+// - 只看標示會誤判：NATO 的 /fr/ 網址底下常是英文逐字稿（標示 fr，英文常用字多出四千多個），
+//   那正是一篇命中最多的頁面，不能丟到後面。
+// - 只看常用字也會誤判：EEAS 代表處頁面的模板比 404 頁小，扣完全是 0，判斷不出來。
+// 判斷不出來就當英文、留在主列表——寧可多看一筆。
+const STOPWORDS = {
+  en: ['the', 'and', 'of', 'to', 'is', 'that', 'for', 'with', 'this', 'are'],
+  es: ['el', 'los', 'las', 'del', 'que', 'y', 'por', 'para', 'una', 'con'],
+  fr: ['le', 'les', 'des', 'et', 'est', 'une', 'pour', 'dans', 'qui', 'du'],
+  de: ['der', 'die', 'das', 'und', 'ist', 'nicht', 'mit', 'für', 'auf', 'den'],
+};
+
+function stopwordCounts(text) {
+  const words = text.toLowerCase().split(/[^a-zà-ÿ]+/);
+  const out = {};
+  Object.keys(STOPWORDS).forEach((l) => {
+    out[l] = words.filter((w) => STOPWORDS[l].indexOf(w) >= 0).length;
+  });
+  return out;
+}
+
+function declaredLang(html) {
+  const m = /<html[^>]*\slang=["']?([a-z]{2,3})/i.exec(html);
+  return m ? m[1].toLowerCase() : '';
+}
+
+function pageLang(declared, counts, baseCounts) {
+  if (!declared || declared === 'en') return 'en';
+  let best = 'en';
+  let bestN = 0;
+  Object.keys(counts).forEach((l) => {
+    const n = Math.max(0, counts[l] - ((baseCounts && baseCounts[l]) || 0));
+    if (n > bestN) { best = l; bestN = n; }
+  });
+  return best === 'en' || bestN === 0 ? 'en' : declared;
+}
+
+// 沒抓頁面的（無法檢查）只能看網址：理事會文件的語言代碼、consilium 網址的 /xx/ 路徑。
+// 其他站的網址語言不可靠（EEAS 的 _en 頁面可能是別的語言），看不出來就當英文。
+function urlLang(u) {
+  const k = councilDocKey(u);
+  if (k) return k.lang;
+  try {
+    const p = new URL(u);
+    if (!/(^|\.)consilium\.europa\.eu$/.test(p.hostname)) return '';
+    const m = /^\/([a-z]{2})\//.exec(p.pathname);
+    return m ? m[1] : '';
+  } catch (e) { return ''; }
+}
+
+// 一筆結果放在哪一區：非英文一律 'foreign'（「其他」），其餘照它的判定
+function sectionOf(r) {
+  const lang = r.lang || urlLang(r.url) || 'en';
+  return lang !== 'en' ? 'foreign' : r.state;
 }
 
 async function fetchPage(url) {
@@ -205,6 +289,8 @@ async function getBaseline(host, keywords) {
       bytes: res.body.length,
       softNotFound: res.status === 200,   // 可疑：不存在的路徑卻回 200
       counts,
+      stop: stopwordCounts(text),   // 404 頁上的常用字與日期都屬於導覽列，判斷語言與日期時要扣掉
+      dates: datesIn(text),
     };
   }
 
@@ -277,6 +363,8 @@ async function checkUrl(rawUrl) {
   out.title = extractTitle(res.body);
 
   const text = htmlToText(res.body);
+  out.date = firstDate(text, baseline.dates);
+  out.lang = pageLang(declaredLang(res.body), stopwordCounts(text), baseline.stop);
   out.hits = [];       // 正文真的有
   out.chromeOnly = []; // 有出現，但沒超過導覽列的量
   out.absent = [];     // 根本沒有
@@ -356,13 +444,20 @@ const ABSENT_NOTE = 'Google 回了這幾頁，但抓到的頁面上一個關鍵�
   'Google 可能是靠同義詞、詞形變化或其他語言命中的，也可能是頁面後來改過；' +
   '工具判斷不了，所以不能當成 Google 誤判。請看標題決定要不要點開。';
 
+// 「其他」裡非英文那一組的說明。index.html 用同一段話。
+const FOREIGN_NOTE = '頁面標示的語言與正文用字都不是英文的頁面，不論命中與否都放在這裡；' +
+  '每一筆原本的判定（正文命中、只在導覽列……）照樣標在底下，一筆都沒丟。';
+
 function renderHtml(results, meta) {
   // 同一份理事會文件的各語言版本先合併成一筆，下面的分區與計數都用合併後的
   const shown = groupCouncilDocs(results);
-  const confirmed = shown.filter((r) => r.state === 'confirmed');
-  const absent = shown.filter((r) => r.state === 'absent');
-  const unknown = shown.filter((r) => r.state === 'unknown');
-  const chrome = shown.filter((r) => r.state === 'chrome');
+  const pick = (s) => shown.filter((r) => sectionOf(r) === s);
+  const confirmed = pick('confirmed');
+  const absent = pick('absent');
+  const unknown = pick('unknown');
+  const chrome = pick('chrome');
+  const foreign = pick('foreign');
+  const other = chrome.length + foreign.length;
   const unknownUrls = unknown.reduce((n, r) => n + (r.langs ? r.langs.length : 1), 0);
 
   const section = (title, cls, rows, bodyFn, note) => {
@@ -384,11 +479,36 @@ function renderHtml(results, meta) {
     '<span class="chip ' + cls + '">' + escapeHtml(h.kw) +
     ' <b>' + h.count + '</b><i>／導覽列 ' + h.baseline + '</i></span>').join(' ');
 
+  // 每筆底下的小字：頁面上的日期（有抓到頁面才有）；非英文那一組另外標語言
+  const metaLine = (r, withLang) => {
+    const parts = [];
+    if (withLang) parts.push('語言：' + (r.lang || urlLang(r.url)));
+    if (r.state !== 'unknown') parts.push(r.date ? '頁面上的日期：' + r.date : '頁面上找不到日期');
+    return parts.length ? '<div class="kw sub">' + escapeHtml(parts.join('　')) + '</div>' : '';
+  };
+
+  const langLinks = (r) => (r.langs && r.langs.length > 1
+    ? '<div class="kw sub">各語言版本：' + r.langs.map((l) =>
+      '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener noreferrer">' +
+      escapeHtml(l.lang) + '</a>').join(' ') + '</div>'
+    : '');
+
+  // 非英文頁面原本的判定，照樣標出來
+  const verdictOf = (r) => {
+    if (r.state === 'confirmed') {
+      return '<div class="kw">正文命中：' + kwChips(r.hits, 'hit') + '</div>' +
+        (r.chromeOnly.length ? '<div class="kw sub">另有只在導覽列的：' + kwChips(r.chromeOnly, 'dim') + '</div>' : '');
+    }
+    if (r.state === 'chrome') return '<div class="kw">只在導覽列：' + kwChips(r.chromeOnly, 'dim') + '</div>';
+    if (r.state === 'absent') return '<div class="kw sub">找不到關鍵字</div>';
+    return langLinks(r) + '<div class="why">無法檢查：' + escapeHtml(r.reason || '') + '</div>';
+  };
+
   // 順序：先正文確認，再兩類要自己看的（找不到關鍵字、無法檢查），
-  // 最後才是可以略過的只在導覽列。
+  // 最後才是可以略過的「其他」（只在導覽列、非英文頁面）。
   const body =
     section('正文確認命中', 'ok', confirmed, (r) =>
-      '<article>' + linkOf(r) +
+      '<article>' + linkOf(r) + metaLine(r) +
       '<div class="kw">' + kwChips(r.hits, 'hit') + '</div>' +
       (r.chromeOnly.length
         ? '<div class="kw sub">另有只在導覽列的：' + kwChips(r.chromeOnly, 'dim') + '</div>'
@@ -396,15 +516,10 @@ function renderHtml(results, meta) {
       '</article>') +
 
     section('找不到關鍵字（要自己看）', 'absent', absent, (r) =>
-      '<article>' + linkOf(r) + '</article>', ABSENT_NOTE) +
+      '<article>' + linkOf(r) + metaLine(r) + '</article>', ABSENT_NOTE) +
 
     section('無法檢查', 'unknown', unknown, (r) =>
-      '<article>' + linkOf(r) +
-      (r.langs && r.langs.length > 1
-        ? '<div class="kw sub">各語言版本：' + r.langs.map((l) =>
-          '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener noreferrer">' +
-          escapeHtml(l.lang) + '</a>').join(' ') + '</div>'
-        : '') +
+      '<article>' + linkOf(r) + langLinks(r) +
       '<div class="why">' + escapeHtml(r.reason || '') + '</div>' +
       '</article>',
       unknownUrls > unknown.length
@@ -412,10 +527,20 @@ function renderHtml(results, meta) {
           ' 筆。每個語言的連結都在該筆底下。'
         : '') +
 
-    section('只在導覽列命中（Google 誤判）', 'chrome', chrome, (r) =>
-      '<article>' + linkOf(r) +
-      '<div class="kw">' + kwChips(r.chromeOnly, 'dim') + '</div>' +
-      '</article>');
+    (other
+      ? '<section class="chrome">\n<h2>其他（可以略過） <span class="n">' + other + '</span></h2>\n' +
+        (chrome.length
+          ? '<h3>只在導覽列命中（Google 誤判） <span class="n">' + chrome.length + '</span></h3>\n' +
+            chrome.map((r) => '<article>' + linkOf(r) + metaLine(r) +
+              '<div class="kw">' + kwChips(r.chromeOnly, 'dim') + '</div></article>').join('\n')
+          : '') +
+        (foreign.length
+          ? '<h3>非英文頁面 <span class="n">' + foreign.length + '</span></h3>\n' +
+            '<p class="kw sub">' + escapeHtml(FOREIGN_NOTE) + '</p>\n' +
+            foreign.map((r) => '<article>' + linkOf(r) + metaLine(r, true) + verdictOf(r) + '</article>').join('\n')
+          : '') +
+        '\n</section>'
+      : '');
 
   const needLook = [
     absent.length ? '<b>' + absent.length + '</b> 筆找不到關鍵字' : '',
@@ -456,6 +581,8 @@ function renderHtml(results, meta) {
   section.ok h2 { color:var(--ok); }
   section.chrome h2 { color:var(--dim); }
   section.unknown h2, section.absent h2 { color:var(--warn); }
+  section h3 { font-size:13.5px; font-weight:600; color:var(--dim); margin:14px 0 8px; }
+  section h3 .n { color:var(--muted); font-weight:400; }
   article { background:var(--card); border:1px solid var(--line); border-radius:10px;
     padding:12px 14px; margin-bottom:9px; }
   article a { color:var(--accent); text-decoration:none; font-weight:600; }
@@ -490,7 +617,7 @@ function renderHtml(results, meta) {
     <div><b>${confirmed.length}</b>正文確認</div>
     <div><b>${absent.length}</b>找不到關鍵字</div>
     <div><b>${unknown.length}</b>無法檢查</div>
-    <div><b>${chrome.length}</b>只在導覽列</div>
+    <div><b>${other}</b>其他</div>
   </div>
 
 ${body || '<p class="sub">沒有輸入任何網址。</p>'}
@@ -498,7 +625,8 @@ ${body || '<p class="sub">沒有輸入任何網址。</p>'}
   <footer>
     <b>判讀提醒：</b>「只在導覽列」代表該頁的關鍵字命中數沒有超過同站 404 頁的命中數，
     也就是那些字很可能只出現在全站共用的選單裡。「找不到關鍵字」代表抓到的頁面上一個關鍵字都沒有，
-    Google 為什麼回它，工具判斷不了。這是<b>精確度</b>工具——
+    Google 為什麼回它，工具判斷不了。非英文頁面不論命中與否都歸在「其他」，原本的判定照樣標著。
+    「頁面上的日期」是工具在頁面上找到的第一個日期，只是提示，沒有拿來排除任何一筆。這是<b>精確度</b>工具——
     它只能從 Google 給的清單裡剔除假命中，<b>不會、也不可能告訴你有沒有漏掉什麼</b>。
     ${needLook ? '<br>本次有 ' + needLook + '，那幾筆<b>既不是命中也不是未命中</b>，請自己看。' : ''}
     ${softWarn.length ? '<br><b>警告：</b>' + escapeHtml(softWarn.join('、')) + ' 的 404 探測回了 200，對照基準線可能被灌水，判定會偏嚴（可能誤殺真命中）。' : ''}
@@ -560,7 +688,11 @@ async function main() {
       : r.state === 'chrome' ? '只在導覽列'
       : r.state === 'absent' ? '找不到關鍵字'
       : '無法檢查 — ' + r.reason;
-    console.log(mark);
+    // 理事會文件不在這裡標語言：同一份文件後面可能還有英文版，合併後才知道放哪一區
+    const extra = (r.date ? '［' + r.date + '］' : '') +
+      (sectionOf(r) === 'foreign' && !councilDocKey(r.url)
+        ? '（非英文：' + (r.lang || urlLang(r.url)) + '，歸到「其他」）' : '');
+    console.log(mark + (extra ? ' ' + extra : ''));
   }
 
   const meta = {
@@ -573,11 +705,12 @@ async function main() {
 
   // 計數用合併後的筆數，跟報告、網頁版一致
   const shown = groupCouncilDocs(results);
-  const n = (s) => shown.filter((r) => r.state === s).length;
+  const n = (s) => shown.filter((r) => sectionOf(r) === s).length;
   console.log('\n正文確認 ' + n('confirmed') +
               '　找不到關鍵字 ' + n('absent') +
               '　無法檢查 ' + n('unknown') +
-              '　只在導覽列 ' + n('chrome'));
+              '　其他 ' + (n('chrome') + n('foreign')) +
+              '（只在導覽列 ' + n('chrome') + '、非英文 ' + n('foreign') + '）');
   console.log('已寫出：' + path.resolve(output));
 
   // 給 CI 用的機器可讀摘要，不用去解析上面那行人看的文字。
@@ -587,8 +720,10 @@ async function main() {
       total: urls.length,
       confirmed: n('confirmed'),
       absent: n('absent'),
-      chrome: n('chrome'),
       unknown: n('unknown'),
+      chrome: n('chrome'),     // 英文頁面裡只在導覽列的
+      foreign: n('foreign'),   // 非英文頁面（不論判定）
+      other: n('chrome') + n('foreign'),
       generatedAt: meta.generatedAt,
       incomplete: !coverage.every((c) => c.ok),
       coverage: coverage.map((c) => (c.ok ? '✓ ' : '⚠ ') + c.name + '：' + c.text),
